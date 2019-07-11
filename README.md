@@ -5,6 +5,8 @@ Only tested on 32 bit OS, the libraries will probably not work on 64 bit.
 
 ## Prerequisites
 
+This code requires `cmake`, `make`, `gcc` and `xxd` to be installed. The program `xxd` can be found in the `vim` package.
+
 On a Raspberry Pi, the correct libraries should already be present in `/opt/vc` so there is no need to do anything.
 If the files are not present, then you can build and install them yourself as follows (from a separate directory).
 
@@ -17,4 +19,15 @@ It might ask for a sudo password after building, in order to install the files i
 ## Compiling
 
 Use the `buildme` script to build
+
+## Running
+
+To run without recording
+
+    build/raspiballs -w 1280 -h 720 -fps 40 -t 0 -g 10 --ev 5 --glwin 450,700,640,480
+
+To record video (in fragments)
+
+    mkdir -p "/dev/shm/replay/fragments"
+    build/raspiballs -o /dev/shm/replay/fragments/out%04d.h264 -w 1280 -h 720 -fps 40 -t 0  -sg 100 -wr 100 -g 10 --ev 5 --glwin 450,700,640,480
 
