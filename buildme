@@ -1,0 +1,16 @@
+#!/bin/bash
+
+mkdir -p build
+pushd build
+
+if [ "armv6l" = `uname -m` ] || [ "armv7l" = `uname -m` ]; then
+    # For building on the raspberry pi 3
+    cmake ..
+    make
+else
+	cmake -DCMAKE_TOOLCHAIN_FILE=../userland/makefiles/cmake/toolchains/arm-linux-gnueabihf.cmake ..
+    make
+fi
+
+popd
+
