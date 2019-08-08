@@ -76,7 +76,7 @@ and at the very end of that same function, before return, add:
     state->raspitex_state.preview_width   = state->preview_parameters.previewWindow.width;
     state->raspitex_state.preview_height  = state->preview_parameters.previewWindow.height;
     state->raspitex_state.opacity         = state->preview_parameters.opacity;
-    state->raspitex_state.verbose         = state->verbose;
+    state->raspitex_state.verbose         = state->common_settings.verbose;
 
 In `static void application_help_message(char *app_name)` under `raspicli_display_help(cmdline_commands, cmdline_commands_size);` add:
 
@@ -138,8 +138,8 @@ In the same function, near the end, there is `fprintf(stderr, "Closing down\n");
 
 The main edits are:
 
-1. Fix scene id to balltrack scene
-2. Limit drawing framerate to source framerate. In `preview_process_returned_bufs` only call `raspitex_draw` when a new buffer is available from the camera source.
+1. Ignore requested scene and always use the balltrack scene
+2. Limit drawing framerate to source framerate: in `preview_process_returned_bufs` only call `raspitex_draw` when a new buffer is available from the camera source.
 
 Remove all the `gl_scenes/*` includes and replace them by only the `balltrack.h` file:
 
@@ -150,4 +150,44 @@ Remove all the `gl_scenes/*` includes and replace them by only the `balltrack.h`
     //#include "gl_scenes/vcsm_square.h"
     //#include "gl_scenes/yuv.h"
     #include "gl_scenes/balltrack.h"
+
+In `static int preview_process_returned_bufs(RASPITEX_STATE* state)` at the end of the function, remove the `raspitex_draw` call.
+
+    //if (! new_frame)
+    //    rc = raspitex_draw(state, NULL);
+
+In `int raspitex_init(RASPITEX_STATE *state)` comment out the `switch (state->scene_id)` and replace it with a call to `balltrack_open`:
+
+    //switch (state->scene_id)
+    //{
+    //case RASPITEX_SCENE_SQUARE:
+    //   rc = square_open(state);
+    //   break;
+    //case RASPITEX_SCENE_MIRROR:
+    //   rc = mirror_open(state);
+    //   break;
+    //case RASPITEX_SCENE_TEAPOT:
+    //   rc = teapot_open(state);
+    //   break;
+    //case RASPITEX_SCENE_YUV:
+    //   rc = yuv_open(state);
+    //   break;
+    //case RASPITEX_SCENE_SOBEL:
+    //   rc = sobel_open(state);
+    //   break;
+    //case RASPITEX_SCENE_VCSM_SQUARE:
+    //   rc = vcsm_square_open(state);
+    //   break;
+    //default:
+    //   rc = -1;
+    //   break;
+    //}
+    rc = balltrack_open(state);
+
+### Changes from `RaspiTex.h` to `RaspiTexBalls.h`
+
+Change this include: (`RaspiTex.c` will work without the include; `RaspiTexUtil.c` needs it)
+
+    //#include "interface/khronos/include/EGL/eglext_brcm.h"
+    #include "EGL/eglext_brcm.h"
 
