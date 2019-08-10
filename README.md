@@ -2,6 +2,31 @@
 
 This repository contains the code for running the balltracking software on the Raspberry Pi GPU.
 Only tested on 32 bit OS, the libraries will probably not work on 64 bit.
+The code is built on top of the `raspivid` and `raspistill` programs, see below for how to update to newer version of those programs.
+Currently this uses the legacy broadcom GL driver (as opposed to Mesa + vc4-fkms-v3d), which, at the time of writing, is *not* available for the Raspberry Pi 4.
+The drivers for the Pi 4 currently do *not* support getting the camera data directly into an OpenGL texture, so this code will not run on a Pi 4.
+
+## Overview -- connection with web interface
+
+This explains how the tracker works together with the web interface (https://github.com/tombana/foosball-web).
+
+The most important files are:
+
+- `raspiballs` -- The program that runs the balltracking code on the GPU and detects if a goal is scored
+- `webproxy.py` -- Python script that handles communication between web interface
+
+Other files:
+
+- `run-tracker.sh` -- Wrapper around `raspiballs` that sets correct resolution
+- `generate-replay.sh` -- Concatenates the last few replay fragments into one replay file
+- `player` -- Program that replays videos fullscreen at custom framerate
+- `replay.sh` -- Wrapper around `player`
+
+The python script `webproxy.py` acts as a proxy between the web interface (i.e. the javascript code) and the `raspiballs` program.
+It runs a websocket server, and the web interface is opened, the javascript code will try to connect to the websocket server.
+When the web interface requests tracking, `webproxy.py` will run `run-tracker.sh`.
+When a goal is scored, `raspiballs` writes some data to a FIFO file, which is read out by `webproxy.py` and sent to the web interface.
+When the web interface requests a replay, `webproxy.py` will run `generate-replay.sh` followed by `replay.sh`.
 
 ## Prerequisites
 
