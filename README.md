@@ -6,21 +6,38 @@ The code is built on top of the `raspivid` and `raspistill` programs, see below 
 Currently this uses the legacy broadcom GL driver (as opposed to Mesa + vc4-fkms-v3d), which, at the time of writing, is *not* available for the Raspberry Pi 4.
 The drivers for the Pi 4 currently do *not* support getting the camera data directly into an OpenGL texture, so this code will not run on a Pi 4.
 
-## Overview -- connection with web interface
+## Overview
+
+### Recorder and player
+
+There are two programs:
+
+- The recorder, `raspiballs`, runs the tracking on camera input and records h264 video. Its based on `raspivid`.
+- The video player, `videotracker`, runs the tracking on raw h264 video (as recorded by `raspivid` or `raspiballs`). Its based on the `hello_videocube` example program.
+
+The directory structure is as follows
+
+    src/tracker
+    src/player
+    src/recorder
+
+All important tracking code is in `src/tracker`, and is shared by the two programs.
+
+### Connection with web interface
 
 This explains how the tracker works together with the web interface (https://github.com/tombana/foosball-web).
 
 The most important files are:
 
-- `raspiballs` -- The program that runs the balltracking code on the GPU and detects if a goal is scored
-- `webproxy.py` -- Python script that handles communication between web interface
+- `raspiballs` --- The program that runs the balltracking code on the GPU and detects if a goal is scored
+- `webproxy.py` --- Python script that handles communication between web interface
 
 Other files:
 
-- `run-tracker.sh` -- Wrapper around `raspiballs` that sets correct resolution
-- `generate-replay.sh` -- Concatenates the last few replay fragments into one replay file
-- `player` -- Program that replays videos fullscreen at custom framerate
-- `replay.sh` -- Wrapper around `player`
+- `run-tracker.sh` --- Wrapper around `raspiballs` that sets correct resolution
+- `generate-replay.sh` --- Concatenates the last few replay fragments into one replay file
+- `player` --- Program that replays videos fullscreen at custom framerate. It does *not* do tracking.
+- `replay.sh` --- Wrapper around `player`
 
 The python script `webproxy.py` acts as a proxy between the web interface (i.e. the javascript code) and the `raspiballs` program.
 It runs a websocket server, and the web interface is opened, the javascript code will try to connect to the websocket server.
@@ -55,7 +72,6 @@ To record video (in fragments)
 
     mkdir -p "/dev/shm/replay/fragments"
     build/raspiballs -o /dev/shm/replay/fragments/out%04d.h264 -w 1280 -h 720 -fps 40 -t 0  -sg 100 -wr 100 -g 10 --ev 5 --glwin 450,700,640,480
-
 
 ## Branching from newer userland repository
 

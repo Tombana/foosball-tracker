@@ -42,7 +42,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "interface/mmal/mmal_buffer.h"
 #include "interface/mmal/util/mmal_util.h"
 #include "interface/mmal/util/mmal_util_params.h"
-#include "tga.h"
+#include "../tracker/tga.h"
 
 //#include "gl_scenes/mirror.h"
 //#include "gl_scenes/sobel.h"
@@ -50,7 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //#include "gl_scenes/teapot.h"
 //#include "gl_scenes/vcsm_square.h"
 //#include "gl_scenes/yuv.h"
-#include "gl_scenes/balltrack.h"
+#include "BalltrackScene.h"
 
 /**
  * \file RaspiTex.c

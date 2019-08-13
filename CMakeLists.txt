@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.1)
-project(raspiballs)
+project(foosballtracker)
 
 #set(THREADS_PREFER_PTHREAD_FLAG ON)
 #find_package(Threads REQUIRED)
@@ -33,23 +33,26 @@ include_directories(${PROJECT_SOURCE_DIR}/src)
 include_directories(/opt/vc/include)
 link_directories(/opt/vc/lib)
 
-set (SOURCES
-    src/RaspiCamControl.c
-    src/RaspiCLI.c
-    src/RaspiPreview.c
-    src/RaspiCommonSettings.c
-    src/RaspiHelpers.c
-    #src/RaspiGPS.c
-    #src/libgps_loader.c
-    src/RaspiVidBalls.c
-    src/RaspiTexBalls.c
-    src/RaspiTexUtil.c
-    src/tga.c
-    src/gl_scenes/balltrack.c
-    src/balltrackshaders/allshaders.h
-    src/BalltrackCore.c
-    src/BalltrackUtil.c
-    src/BallAnalysis.c
+set (COMMON_SOURCES
+    src/tracker/tga.c
+    src/tracker/balltrackshaders/allshaders.h
+    src/tracker/BalltrackCore.c
+    src/tracker/BalltrackUtil.c
+    src/tracker/BallAnalysis.c
+)
+
+set (RECORDER_SOURCES
+    src/recorder/RaspiCamControl.c
+    src/recorder/RaspiCLI.c
+    src/recorder/RaspiPreview.c
+    src/recorder/RaspiCommonSettings.c
+    src/recorder/RaspiHelpers.c
+    #src/recorder/RaspiGPS.c
+    #src/recorder/libgps_loader.c
+    src/recorder/RaspiVidBalls.c
+    src/recorder/RaspiTexBalls.c
+    src/recorder/RaspiTexUtil.c
+    src/recorder/BalltrackScene.c
 )
 
 add_custom_command(OUTPUT src/balltrackshaders/allshaders.h
@@ -57,9 +60,9 @@ add_custom_command(OUTPUT src/balltrackshaders/allshaders.h
                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/balltrackshaders
 )
 
-add_executable(raspiballs ${SOURCES})
+add_executable(raspiballs ${COMMON_SOURCES} ${RECORDER_SOURCES})
 
-set (LIBS
+set (RECORDER_LIBS
     mmal_core
     mmal_util
     mmal_vc_client
@@ -74,5 +77,5 @@ set (LIBS
     rt
     )
 
-target_link_libraries(raspiballs ${LIBS})
+target_link_libraries(raspiballs ${RECORDER_LIBS})
 
