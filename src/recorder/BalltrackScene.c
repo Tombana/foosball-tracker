@@ -76,7 +76,7 @@ static int balltrack_redraw(RASPITEX_STATE* state)
     GLCHK(glActiveTexture(GL_TEXTURE4));
     GLCHK(glBindTexture(GL_TEXTURE_EXTERNAL_OES, state->v_texture));
 #endif
-    return balltrack_core_redraw(state->width, state->height, state->texture, GL_TEXTURE_EXTERNAL_OES);
+    return balltrack_core_process_image(state->width, state->height, state->texture, GL_TEXTURE_EXTERNAL_OES);
 }
 
 int balltrack_open(RASPITEX_STATE *state)

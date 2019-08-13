@@ -43,17 +43,17 @@ static const int height3 = 45;
 #endif
 
 
-static GLfloat quad_varray[] = {
+GLfloat quad_varray[] = {
    -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f,
    -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f,
 };
 
-static GLuint quad_vbo; // vertex buffer object
-static GLuint fbo;      // frame buffer object for render-to-texture
-static GLuint rtt_tex1; // Texture for render-to-texture
-static GLuint rtt_tex2; // Texture for render-to-texture
-static GLuint rtt_tex3; // Texture for render-to-texture
-static GLuint rtt_copytex;
+GLuint quad_vbo; // vertex buffer object
+GLuint fbo;      // frame buffer object for render-to-texture
+Texture rtt_tex1; // Texture for render-to-texture
+Texture rtt_tex2; // Texture for render-to-texture
+Texture rtt_tex3; // Texture for render-to-texture
+Texture rtt_copytex;
 
 static uint8_t* pixelbuffer; // For reading out result
 
@@ -294,14 +294,14 @@ void draw_square(float xmin, float xmax, float ymin, float ymax, uint32_t color)
     draw_line_strip(vertexBuffer, 5, color);
 }
 
-// If target_tex is zero, then target is the screen
-static int render_pass(SHADER_PROGRAM_T* shader, GLuint source_type, GLuint source_tex, GLuint target_tex, int targetWidth, int targetHeight) {
+// If target.id is zero, then target is the screen
+int render_pass(SHADER_PROGRAM_T* shader, Texture source, Texture target) {
     GLCHK(glUseProgram(shader->program));
-    if (target_tex) {
+    if (target.id) {
         // Enable Render-to-texture and set the output texture
         GLCHK(glBindFramebufferOES(GL_FRAMEBUFFER_OES, fbo));
-        GLCHK(glFramebufferTexture2DOES(GL_FRAMEBUFFER_OES, GL_COLOR_ATTACHMENT0_OES, GL_TEXTURE_2D, target_tex, 0));
-        GLCHK(glViewport(0, 0, targetWidth, targetHeight));
+        GLCHK(glFramebufferTexture2DOES(GL_FRAMEBUFFER_OES, GL_COLOR_ATTACHMENT0_OES, GL_TEXTURE_2D, target.id, 0));
+        GLCHK(glViewport(0, 0, target.width, target.height));
         // According to the open source GL driver for the VC4 chip,
         // [ https://github.com/anholt/mesa/wiki/VC4-Performance-Tricks ],
         // it is faster to clear the buffer even when writing to the complete screen
@@ -309,12 +309,12 @@ static int render_pass(SHADER_PROGRAM_T* shader, GLuint source_type, GLuint sour
     } else {
         // Unset frame buffer object. Now draw to screen
         GLCHK(glBindFramebufferOES(GL_FRAMEBUFFER_OES, 0));
-        GLCHK(glViewport(0, 0, targetWidth, targetHeight));
+        GLCHK(glViewport(0, 0, target.width, target.height));
         glClear(GL_COLOR_BUFFER_BIT); // See above comment
     }
     // Bind the input texture
     GLCHK(glActiveTexture(GL_TEXTURE0));
-    GLCHK(glBindTexture(source_type, source_tex));
+    GLCHK(glBindTexture(source.type, source.id));
     // Bind the vertex buffer
     GLCHK(glBindBuffer(GL_ARRAY_BUFFER, quad_vbo));
     GLCHK(glEnableVertexAttribArray(shader->attribute_locations[0]));
@@ -474,11 +474,20 @@ static int balltrack_readout(int width, int height) {
     return 0;
 }
 
-// Same but called from video player version
-int balltrack_core_redraw(int width, int height, GLuint srctex, GLuint srctype)
+int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint srctype)
 {
     ++frameNumber;
-    // Width,height is the size of the preview window
+    // Width,height is the size of the preview window on screen
+    Texture screen;
+    screen.id = 0;
+    screen.width = width;
+    screen.height = height;
+
+    Texture input;
+    input.id = srctex;
+    input.width = 0;
+    input.height = 0;
+    input.type = srctype;
 
 #ifdef DO_FRAMEDUMP
     if (frameNumber == 60) {
@@ -492,32 +501,32 @@ int balltrack_core_redraw(int width, int height, GLuint srctex, GLuint srctype)
     // Diff with previous
     GLCHK(glActiveTexture(GL_TEXTURE1));
     GLCHK(glBindTexture(GL_TEXTURE_2D, rtt_copytex));
-    render_pass(&balltrack_shader_diff, srctype, srctex, 0, width, height);
+    render_pass(&balltrack_shader_diff, input, screen);
 
     // Copy source to previous
-    render_pass(&balltrack_shader_plain, srctype, srctex, rtt_copytex, width0, height0);
+    render_pass(&balltrack_shader_plain, input, rtt_copytex);
 #endif
 
     // First pass: hue filter into smaller texture
-    render_pass(&balltrack_shader_1, srctype,       srctex,   rtt_tex1, width1, height1);
+    render_pass(&balltrack_shader_1, input, rtt_tex1);
     // Second pass: dilate red players
-    render_pass(&balltrack_shader_2, GL_TEXTURE_2D, rtt_tex1, rtt_tex2, width2, height2);
+    render_pass(&balltrack_shader_2, rtt_tex1, rtt_tex2);
 #ifdef THREE_PHASES
     // Third pass: downsample
-    render_pass(&balltrack_shader_3, GL_TEXTURE_2D, rtt_tex2, rtt_tex3, width3, height3);
+    render_pass(&balltrack_shader_3, rtt_tex2, rtt_tex3);
 #endif
     // Readout result
     balltrack_readout(width3, height3);
     // Third pass: render to screen
     GLCHK(glActiveTexture(GL_TEXTURE1));
 #if DEBUG == 1
-    GLCHK(glBindTexture(GL_TEXTURE_2D, rtt_tex1));
+    GLCHK(glBindTexture(GL_TEXTURE_2D, rtt_tex1.id));
 #elif DEBUG == 2
-    GLCHK(glBindTexture(GL_TEXTURE_2D, rtt_tex2));
+    GLCHK(glBindTexture(GL_TEXTURE_2D, rtt_tex2.id));
 #else
-    GLCHK(glBindTexture(GL_TEXTURE_2D, rtt_tex3));
+    GLCHK(glBindTexture(GL_TEXTURE_2D, rtt_tex3.id));
 #endif
-    render_pass(&balltrack_shader_display, srctype, srctex, 0, width, height);
+    render_pass(&balltrack_shader_display, input, screen);
 
     analysis_draw();
 

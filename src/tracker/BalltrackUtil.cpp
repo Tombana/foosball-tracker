@@ -132,17 +132,20 @@ fail:
 //      GL_LINEAR  interpolate between source pixels
 // @return The OpenGL texture id
 //
-GLuint createFilterTexture(int w, int h, GLint scaling) {
-    GLuint id;
-    GLCHK(glGenTextures(1, &id));
-    glBindTexture(GL_TEXTURE_2D, id);
+Texture createFilterTexture(int w, int h, GLint scaling) {
+    Texture tex;
+    tex.width = w;
+    tex.height = h;
+    tex.type = GL_TEXTURE_2D;
+    GLCHK(glGenTextures(1, &tex.id));
+    glBindTexture(GL_TEXTURE_2D, tex.id);
     GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, scaling));
     GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, scaling));
     //Wrapping: clamp. Only use (s,t) as we are using a 2D texture
     GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
     GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
     GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL));
-    return id;
+    return tex;
 }
 
 static void brga_to_rgba(uint8_t *buffer, size_t size)

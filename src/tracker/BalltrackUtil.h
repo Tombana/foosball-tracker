@@ -10,7 +10,7 @@
 
 #include <stdio.h>
 
-//#define CHECK_GL_ERRORS
+#define CHECK_GL_ERRORS
 #ifdef CHECK_GL_ERRORS
 #define GLCHK(X) \
 { \
@@ -24,6 +24,13 @@
 #else
 #define GLCHK(X) X
 #endif /* CHECK_GL_ERRORS */
+
+struct Texture {
+    GLuint id;
+    int width;
+    int height;
+    GLuint type; // Always GL_TEXTURE_2D, except for camera input which is GL_TEXTURE_EXTERNAL_OES
+};
 
 class ShaderUniform {
   public:
@@ -69,7 +76,7 @@ typedef struct SHADER_PROGRAM_T
 
 int balltrack_build_shader_program(SHADER_PROGRAM_T *p);
 
-GLuint createFilterTexture(int w, int h, GLint scaling);
+Texture createFilterTexture(int w, int h, GLint scaling);
 
 int dump_frame(int width, int height, const char* filename);
 

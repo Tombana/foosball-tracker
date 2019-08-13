@@ -12,8 +12,22 @@ MIT License
 extern "C" {
 #endif
 
+//
+// Initialize balltrack shaders
+//
+// @param externalSamplerExtension
+//      Set to 1 if the source texture comes from the camera,
+//      so that the shaders use `samplerExternalOES`
+//      Set to 0 if otherwise, so that the shaders use `sampler2D`
+//
+// @param flipY whether to flip the y coordinate
+//
 int balltrack_core_init(int externalSamplerExtension, int flipY);
-int balltrack_core_redraw(int width, int height, GLuint srctex, GLuint srctype);
+
+//
+// Process an image
+//
+int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint srctype);
 
 #ifdef __cplusplus
 }

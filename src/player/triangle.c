@@ -234,7 +234,7 @@ static void redraw_scene(STATE_T *state)
    glRotatef(90.f, 0.f, 1.f, 0.f ); // bottom face normal along y axis
    glDrawArrays( GL_TRIANGLE_STRIP, 20, 4);
 #endif
-   balltrack_core_redraw(state->screen_width, state->screen_height, state->tex, GL_TEXTURE_2D);
+   balltrack_core_process_image(state->screen_width, state->screen_height, state->tex, GL_TEXTURE_2D);
 
    eglSwapBuffers(state->display, state->surface);
 }
