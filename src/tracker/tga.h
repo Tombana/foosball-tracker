@@ -67,7 +67,15 @@ struct tga_header {
    struct tga_image_info image_info;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int write_tga(FILE* fp, int width, int height, uint8_t *buffer, size_t buffer_size);
 unsigned char *load_tga(const char *filename, struct tga_header *header);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TGA_H */

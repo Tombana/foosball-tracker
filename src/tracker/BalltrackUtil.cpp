@@ -74,18 +74,40 @@ int balltrack_build_shader_program(SHADER_PROGRAM_T *p)
 
     for (i = 0; i < 16; ++i)
     {
-        if (! p->uniform_names[i])
+        ShaderUniform& u = p->uniforms[i];
+        if (!u.name)
             break;
-        p->uniform_locations[i] = glGetUniformLocation(p->program, p->uniform_names[i]);
-        if (p->uniform_locations[i] == -1)
-        {
-            printf("Failed to get location for uniform %s\n",
-                  p->uniform_names[i]);
-            goto fail;
+        u.location = glGetUniformLocation(p->program, u.name);
+        if (u.location == -1) {
+            printf("Failed to get location for uniform %s\n", u.name);
+            u.type = ShaderUniform::UNIFORM_NOTYPE;
         }
-        else {
-            //printf("Uniform for %s is %d\n", p->uniform_names[i], p->uniform_locations[i]);
-        }
+    }
+
+    glUseProgram(p->program);
+    for (i = 0; i < 16; ++i)
+    {
+        ShaderUniform& u = p->uniforms[i];
+        if (!u.name)
+            break;
+
+        switch (u.type) {
+            case ShaderUniform::UNIFORM_INT:
+                glUniform1i(u.location, u.value.i);
+                break;
+            case ShaderUniform::UNIFORM_FLOAT:
+                glUniform1f(u.location, u.value.f);
+                break;
+            case ShaderUniform::UNIFORM_FLOAT2:
+                glUniform2f(u.location, u.value.f2[0], u.value.f2[1]);
+                break;
+            case ShaderUniform::UNIFORM_NOTYPE:
+                // No default value wanted
+                break;
+            default:
+                printf("Unknown type for shader uniform %s\n", u.name);
+                break;
+        };
     }
 
     return 0;
@@ -99,6 +121,28 @@ fail:
         glDeleteShader(p->vs);
     }
     return -1;
+}
+
+
+//
+// Creates an OpenGL texture that we can use for a render pass (render-to-texture)
+//
+// @param scaling How the texture is interpreted when it is a source texture
+//      GL_NEAREST no interpolation for scaling down and up.
+//      GL_LINEAR  interpolate between source pixels
+// @return The OpenGL texture id
+//
+GLuint createFilterTexture(int w, int h, GLint scaling) {
+    GLuint id;
+    GLCHK(glGenTextures(1, &id));
+    glBindTexture(GL_TEXTURE_2D, id);
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, scaling));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, scaling));
+    //Wrapping: clamp. Only use (s,t) as we are using a 2D texture
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+    GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL));
+    return id;
 }
 
 static void brga_to_rgba(uint8_t *buffer, size_t size)
@@ -122,7 +166,7 @@ int dump_frame(int width, int height, const char* filename) {
 
     uint8_t* buffer = NULL;
     size_t size = width * height * 4;
-    buffer = calloc(size, 1);
+    buffer = (uint8_t*)calloc(size, 1);
     if (!buffer) {
         fclose(output_file);
         return 1;

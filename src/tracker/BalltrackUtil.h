@@ -25,6 +25,26 @@
 #define GLCHK(X) X
 #endif /* CHECK_GL_ERRORS */
 
+class ShaderUniform {
+  public:
+    const char* name;
+    enum { UNIFORM_NOTYPE, UNIFORM_INT, UNIFORM_FLOAT, UNIFORM_FLOAT2 } type;
+    union {
+        GLint i;
+        GLfloat f;
+        GLfloat f2[2];
+    } value;
+
+    GLint location; // Uniform location, given by OpenGL
+
+    // The constructors allow for initial values to be given to the uniforms
+    ShaderUniform() : name(0), type(UNIFORM_NOTYPE) {};
+    ShaderUniform(const char* n) : name(n), type(UNIFORM_NOTYPE) {};
+    ShaderUniform(const char* n, GLint x) : name(n), type(UNIFORM_INT) { value.i = x; };
+    ShaderUniform(const char* n, GLfloat x) : name(n), type(UNIFORM_FLOAT) { value.f = x; };
+    ShaderUniform(const char* n, GLfloat x1, GLfloat x2) : name(n), type(UNIFORM_FLOAT2) { value.f2[0] = x1; value.f2[1] = x2; };
+};
+
 /**
  * Container for a simple shader program. The uniform and attribute locations
  * are automatically setup by raspitex_build_shader_program.
@@ -34,8 +54,8 @@ typedef struct SHADER_PROGRAM_T
    const char *vertex_source;       /// Pointer to vertex shader source
    const char *fragment_source;     /// Pointer to fragment shader source
 
-   /// Array of uniform names for raspitex_build_shader_program to process
-   const char *uniform_names[16];
+   /// Array of uniforms for raspitex_build_shader_program to process
+   ShaderUniform uniforms[16];
    /// Array of attribute names for raspitex_build_shader_program to process
    const char *attribute_names[16];
 
@@ -43,15 +63,13 @@ typedef struct SHADER_PROGRAM_T
    GLint fs;                        /// Fragment shader handle
    GLint program;                   /// Shader program handle
 
-   /// The locations for uniforms defined in uniform_names
-   GLint uniform_locations[16];
-
    /// The locations for attributes defined in attribute_names
    GLint attribute_locations[16];
 } SHADER_PROGRAM_T;
 
-
 int balltrack_build_shader_program(SHADER_PROGRAM_T *p);
+
+GLuint createFilterTexture(int w, int h, GLint scaling);
 
 int dump_frame(int width, int height, const char* filename);
 

@@ -1,38 +1,12 @@
 /*
 Copyright (c) 2018, Tom Bannink
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-    * Neither the name of the copyright holder nor the
-      names of its contributors may be used to endorse or promote products
-      derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+MIT License
 */
 
 #include "BalltrackCore.h"
+#include "BalltrackUtil.h"
 #include "BallAnalysis.h"
 #include <string.h>
-
-// For writing to the FIFO python thing
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 // Divisions by 2 of 720p with correct aspect ratio
 // 1280,720
@@ -41,31 +15,31 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //  160, 90
 //   80, 45
 
-// Every step maintains 720p aspect ratio
+// Every step maintains the same aspect ratio
 // -- Source is 720p
-static int width0  = 1280;
-static int height0 = 720;
+static const int width0  = 1280;
+static const int height0 = 720;
 // -- From source to phase 1: 2x2 sampler-average, then hue filter
 // -- 2x2 pixels to 1 pixel
-static int width1  = 640 / 2; // RGBA packs two pairs
-static int height1 = 360;
+static const int width1  = 640 / 2; // RGBA packs two pairs
+static const int height1 = 360;
 
 #ifdef THREE_PHASES
 // -- From phase 1 to phase 2: dilate 'red' filter, do not erode 'orange filter' but rescale?
 // -- 4x4 pixels to 1 pixel (but sample 12x12 pixels to 1 pixel)
-static int width2  = 160 / 2; // RGBA packs two pairs
-static int height2 = 90;
+static const int width2  = 160 / 2; // RGBA packs two pairs
+static const int height2 = 90;
 // -- From phase 2 to phase 3: average for easier cpu handling ???
 // -- 2x2 pixels to 1 pixel
-static int width3  = 80 / 2; // RGBA packs two pairs
-static int height3 = 45;
+static const int width3  = 80 / 2; // RGBA packs two pairs
+static const int height3 = 45;
 #else
 // -- From phase 1 to phase 2: average
 // -- 8x8 pixels to 1 pixel (but sample 12x12 pixels to 1 pixel)
-static int width2  = 80 / 2; // RGBA packs two pairs
-static int height2 = 45;
-static int width3  = 80 / 2;
-static int height3 = 45;
+static const int width2  = 80 / 2; // RGBA packs two pairs
+static const int height2 = 45;
+static const int width3  = 80 / 2;
+static const int height3 = 45;
 #endif
 
 
@@ -91,7 +65,7 @@ SHADER_PROGRAM_T balltrack_shader_1 =
 {
     .vertex_source = (char*)vshader_vert,
     .fragment_source = (char*)phase1_frag,
-    .uniform_names = {"tex", "tex_unit"},
+    .uniforms = {ShaderUniform("tex", 0), ShaderUniform("tex_unit", 1.0f / (float)width0, 1.0f / (float)height0)},
     .attribute_names = {"vertex"},
 };
 
@@ -99,7 +73,7 @@ static SHADER_PROGRAM_T balltrack_shader_2 =
 {
     .vertex_source = (char*)vshader_vert,
     .fragment_source = (char*)phase2_frag,
-    .uniform_names = {"tex", "tex_unit"},
+    .uniforms = {ShaderUniform("tex", 0), ShaderUniform("tex_unit", 1.0f / (float)width1, 1.0f / (float)height1)},
     .attribute_names = {"vertex"},
 };
 
@@ -107,7 +81,7 @@ static SHADER_PROGRAM_T balltrack_shader_3 =
 {
     .vertex_source = (char*)vshader_vert,
     .fragment_source = (char*)phase3_frag,
-    .uniform_names = {"tex", "tex_unit"},
+    .uniforms = {ShaderUniform("tex", 0), ShaderUniform("tex_unit", 1.0f / (float)width2, 1.0f / (float)height2)},
     .attribute_names = {"vertex"},
 };
 
@@ -115,7 +89,17 @@ static SHADER_PROGRAM_T balltrack_shader_display =
 {
     .vertex_source = (char*)vshader_vert,
     .fragment_source = (char*)display_frag,
-    .uniform_names = {"tex_camera", "tex_unit", "tex_filter"},
+    .uniforms = {
+        ShaderUniform("tex_camera", 0),
+        ShaderUniform("tex_filter", 1),
+#if DEBUG == 1
+        ShaderUniform("tex_unit", 1.0f / (float)width1, 1.0f / (float)height1)
+#elif DEBUG == 2
+        ShaderUniform("tex_unit", 1.0f / (float)width2, 1.0f / (float)height2)
+#else
+        ShaderUniform("tex_unit", 1.0f / (float)width3, 1.0f / (float)height3)
+#endif
+    },
     .attribute_names = {"vertex"},
 };
 
@@ -123,7 +107,7 @@ static SHADER_PROGRAM_T balltrack_shader_fixedcolor =
 {
     .vertex_source = (char*)vshader_vert,
     .fragment_source = (char*)fixedcolor_frag,
-    .uniform_names = {"col"},
+    .uniforms = { ShaderUniform("col") },
     .attribute_names = {"vertex"},
 };
 
@@ -131,7 +115,13 @@ static SHADER_PROGRAM_T balltrack_shader_plain =
 {
     .vertex_source = (char*)vshader_vert,
     .fragment_source = (char*)plain_frag,
-    .uniform_names = {"tex_rgb", "tex_y", "tex_u", "tex_v"},
+    .uniforms = { ShaderUniform("tex_rgb", 0),
+#ifdef DO_YUV
+        ShaderUniform("tex_y", 2),
+        ShaderUniform("tex_u", 3),
+        ShaderUniform("tex_v", 4)
+#endif
+    },
     .attribute_names = {"vertex"},
 };
 
@@ -139,45 +129,9 @@ static SHADER_PROGRAM_T balltrack_shader_diff =
 {
     .vertex_source = (char*)vshader_vert,
     .fragment_source = (char*)diff_frag,
-    .uniform_names = {"tex1", "tex2"},
+    .uniforms = { ShaderUniform("tex1", 0), ShaderUniform("tex2", 1) },
     .attribute_names = {"vertex"},
 };
-
-// Initialization of shader uniforms.
-static int shader_set_uniforms(SHADER_PROGRAM_T *shader,
-      int width, int height, int texunit, int extratex)
-{
-   GLCHK(glUseProgram(shader->program));
-   GLCHK(glUniform1i(shader->uniform_locations[0], 0)); // Texture unit
-
-   if (texunit) {
-       // Dimensions of a single source pixel in texture co-ordinates
-       GLCHK(glUniform2f(shader->uniform_locations[1], 1.0 / (float) width, 1.0 / (float) height));
-   }
-   
-   if (extratex) {
-       GLCHK(glUniform1i(shader->uniform_locations[2], 1)); // Extra texture
-   }
-
-   /* Enable attrib 0 as vertex array */
-   GLCHK(glEnableVertexAttribArray(shader->attribute_locations[0]));
-   return 0;
-}
-
-static GLuint createFilterTexture(int w, int h, GLint scaling) {
-    GLuint id;
-    GLCHK(glGenTextures(1, &id));
-    glBindTexture(GL_TEXTURE_2D, id);
-    //Scaling: GL_NEAREST no interpolation for scaling down and up.
-    //Scaling: GL_LINEAR  interpolate between source pixels
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, scaling));
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, scaling));
-    //Wrapping: clamp. Only use (s,t) as we are using a 2D texture
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
-    GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL));
-    return id;
-}
 
 int balltrack_core_init(int externalSamplerExtension, int flipY)
 {
@@ -186,21 +140,26 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
     const char* glRenderer = (const char*)glGetString(GL_RENDERER);
     printf("OpenGL renderer string: %s\n", glRenderer);
 
+    // When the source data comes from the camera, the shaders have
+    //     samplerExternalOES
+    // and when the data comes from a video file, the shaders need
+    //     sampler2D
+    // So this code replaces those when needed.
     if (externalSamplerExtension == 0) {
         // Replace
         // "samplerExternalOES"
         // "sampler2D         "
         char* pos = 0;
-        if ((pos = strstr(balltrack_shader_1.fragment_source, "samplerExternalOES"))){
+        if ((pos = strstr((char*)balltrack_shader_1.fragment_source, "samplerExternalOES"))){
             memcpy(pos, "sampler2D         ", 18);
         }
-        if ((pos = strstr(balltrack_shader_display.fragment_source, "samplerExternalOES"))){
+        if ((pos = strstr((char*)balltrack_shader_display.fragment_source, "samplerExternalOES"))){
             memcpy(pos, "sampler2D         ", 18);
         }
-        if ((pos = strstr(balltrack_shader_plain.fragment_source, "samplerExternalOES"))){
+        if ((pos = strstr((char*)balltrack_shader_plain.fragment_source, "samplerExternalOES"))){
             memcpy(pos, "sampler2D         ", 18);
         }
-        if ((pos = strstr(balltrack_shader_diff.fragment_source, "samplerExternalOES"))){
+        if ((pos = strstr((char*)balltrack_shader_diff.fragment_source, "samplerExternalOES"))){
             memcpy(pos, "sampler2D         ", 18);
         }
     }
@@ -218,74 +177,44 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
     printf("Building shader `phase 1`\n");
     rc = balltrack_build_shader_program(&balltrack_shader_1);
     if (rc != 0)
-        goto end;
-    rc = shader_set_uniforms(&balltrack_shader_1, width0, height0, 1, 0);
-    if (rc != 0)
-        goto end;
+        return rc;
 
     printf("Building shader `phase 2`\n");
     rc = balltrack_build_shader_program(&balltrack_shader_2);
     if (rc != 0)
-        goto end;
-    rc = shader_set_uniforms(&balltrack_shader_2, width1, height1, 1, 0);
-    if (rc != 0)
-        goto end;
+        return rc;
 
     printf("Building shader `phase 3`\n");
     rc = balltrack_build_shader_program(&balltrack_shader_3);
     if (rc != 0)
-        goto end;
-    rc = shader_set_uniforms(&balltrack_shader_3, width2, height2, 1, 0);
-    if (rc != 0)
-        goto end;
+        return rc;
 
     printf("Building shader `display`\n");
     rc = balltrack_build_shader_program(&balltrack_shader_display);
     if (rc != 0)
-        goto end;
-#if DEBUG == 1
-    rc = shader_set_uniforms(&balltrack_shader_display, width1, height1, 1, 1);
-#elif DEBUG == 2
-    rc = shader_set_uniforms(&balltrack_shader_display, width2, height2, 1, 1);
-#else
-    rc = shader_set_uniforms(&balltrack_shader_display, width3, height3, 1, 1);
-#endif
-    if (rc != 0)
-        goto end;
+        return rc;
 
     printf("Building shader `fixedcolor`\n");
     rc = balltrack_build_shader_program(&balltrack_shader_fixedcolor);
     if (rc != 0)
-        goto end;
+        return rc;
 
     printf("Building shader `plain`\n");
     rc = balltrack_build_shader_program(&balltrack_shader_plain);
     if (rc != 0)
-        goto end;
-    rc = shader_set_uniforms(&balltrack_shader_plain, width0, height0, 0, 0);
-    if (rc != 0)
-        goto end;
-#ifdef DO_YUV
-    GLCHK(glUniform1i(balltrack_shader_plain.uniform_locations[1], 2)); // Texture unit
-    GLCHK(glUniform1i(balltrack_shader_plain.uniform_locations[2], 3)); // Texture unit
-    GLCHK(glUniform1i(balltrack_shader_plain.uniform_locations[3], 4)); // Texture unit
-#endif
+        return rc;
 
     printf("Building shader `diff`\n");
     rc = balltrack_build_shader_program(&balltrack_shader_diff);
     if (rc != 0)
-        goto end;
-    rc = shader_set_uniforms(&balltrack_shader_diff, width0, height0, 0, 0);
-    if (rc != 0)
-        goto end;
-    GLCHK(glUniform1i(balltrack_shader_diff.uniform_locations[1], 1)); // Texture unit
+        return rc;
 
     // Buffer to read out pixels from last texture
     uint32_t buffer_size = width3 * height3 * 4;
-    pixelbuffer = calloc(buffer_size, 1);
+    pixelbuffer = (uint8_t*)calloc(buffer_size, 1);
     if (!pixelbuffer) {
         rc = -1;
-        goto end;
+        return rc;
     }
 
     printf("Generating framebuffer object\n");
@@ -322,7 +251,6 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
     GLCHK(glDisable(GL_BLEND));
     GLCHK(glDisable(GL_DEPTH_TEST));
 
-end:
     return rc;
 }
 
@@ -339,7 +267,7 @@ void draw_line_strip(POINT* xys, int count, uint32_t color) {
 
     SHADER_PROGRAM_T* shader = &balltrack_shader_fixedcolor;
     GLCHK(glUseProgram(shader->program));
-    GLCHK(glUniform4f(shader->uniform_locations[0], r, g, b, a));
+    GLCHK(glUniform4f(shader->uniforms[0].location, r, g, b, a));
 
     // Unbind the vertex buffer --> use client memory
     GLCHK(glBindBuffer(GL_ARRAY_BUFFER, 0));
