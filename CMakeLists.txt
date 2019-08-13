@@ -4,19 +4,35 @@ project(foosballtracker)
 #set(THREADS_PREFER_PTHREAD_FLAG ON)
 #find_package(Threads REQUIRED)
 
-SET(COMPILE_DEFINITIONS -Werror)
 # Set --no-as-needed to stop the linker discarding mmal_vc_client
 # as it can't see that the constructor registers a load of functionality
 # with the MMAL core.
 SET( CMAKE_EXE_LINKER_FLAGS "-Wl,--no-as-needed" )
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-multichar -Wall -Wno-unused-but-set-variable -fPIC")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wno-multichar -Wno-unused-but-set-variable -fPIC -ftree-vectorize")
+
+# These come from raspivid
 add_definitions(-D_REENTRANT)
 add_definitions(-DUSE_VCHIQ_ARM -DVCHI_BULK_ALIGN=1 -DVCHI_BULK_GRANULARITY=1)
 add_definitions(-DOMX_SKIP64BIT)
 add_definitions(-DEGL_SERVER_DISPMANX)
 add_definitions(-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
 add_definitions(-D_GNU_SOURCE)
+
+# These come from hello_videocube
+add_definitions(-DSTANDALONE)
+add_definitions(-D__STDC_CONSTANT_MACROS)
+add_definitions(-D__STDC_LIMIT_MACROS)
+add_definitions(-DTARGET_POSIX)
+add_definitions(-D_LINUX)
+add_definitions(-DPIC)
+add_definitions(-DHAVE_LIBOPENMAX=2)
+add_definitions(-DOMX)
+add_definitions(-DUSE_EXTERNAL_OMX)
+add_definitions(-DHAVE_LIBBCM_HOST)
+add_definitions(-DUSE_EXTERNAL_LIBBCM_HOST)
+
+
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
@@ -32,6 +48,7 @@ include_directories(${PROJECT_SOURCE_DIR}/src)
 
 include_directories(/opt/vc/include)
 link_directories(/opt/vc/lib)
+
 
 set (COMMON_SOURCES
     src/tracker/tga.c
@@ -55,12 +72,20 @@ set (RECORDER_SOURCES
     src/recorder/BalltrackScene.c
 )
 
+set (PLAYER_SOURCES
+    src/player/triangle.c
+    src/player/video.c
+    src/player/libilclient/ilclient.c
+    src/player/libilclient/ilcore.c
+    )
+
 add_custom_command(OUTPUT src/balltrackshaders/allshaders.h
                    COMMAND make allshaders.h
                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/balltrackshaders
 )
 
 add_executable(raspiballs ${COMMON_SOURCES} ${RECORDER_SOURCES})
+add_executable(videotracker ${COMMON_SOURCES} ${PLAYER_SOURCES})
 
 set (RECORDER_LIBS
     mmal_core
@@ -77,5 +102,18 @@ set (RECORDER_LIBS
     rt
     )
 
+set (PLAYER_LIBS
+    openmaxil
+    bcm_host
+    vcos
+    vchiq_arm
+    brcmGLESv2
+    brcmEGL
+    pthread
+    rt
+    m
+    )
+
 target_link_libraries(raspiballs ${RECORDER_LIBS})
+target_link_libraries(videotracker ${PLAYER_LIBS})
 

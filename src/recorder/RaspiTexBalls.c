@@ -216,29 +216,30 @@ static void update_fps()
  * @param state RASPITEX STATE
  * @return Zero if successful.
  */
-static void raspitex_do_capture(RASPITEX_STATE *state)
-{
-   uint8_t *buffer = NULL;
-   size_t size = 0;
-
-   if (state->capture.request)
-   {
-      if (state->ops.capture(state, &buffer, &size) == 0)
-      {
-         /* Pass ownership of buffer to main thread via capture state */
-         state->capture.buffer = buffer;
-         state->capture.size = size;
-      }
-      else
-      {
-         state->capture.buffer = NULL; // Null indicates an error
-         state->capture.size = 0;
-      }
-
-      state->capture.request = 0; // Always clear request and post sem
-      vcos_semaphore_post(&state->capture.completed_sem);
-   }
-}
+// ADDED: COMMENTED OUT
+//static void raspitex_do_capture(RASPITEX_STATE *state)
+//{
+//   uint8_t *buffer = NULL;
+//   size_t size = 0;
+//
+//   if (state->capture.request)
+//   {
+//      if (state->ops.capture(state, &buffer, &size) == 0)
+//      {
+//         /* Pass ownership of buffer to main thread via capture state */
+//         state->capture.buffer = buffer;
+//         state->capture.size = size;
+//      }
+//      else
+//      {
+//         state->capture.buffer = NULL; // Null indicates an error
+//         state->capture.size = 0;
+//      }
+//
+//      state->capture.request = 0; // Always clear request and post sem
+//      vcos_semaphore_post(&state->capture.completed_sem);
+//   }
+//}
 
 /**
  * Checks if there is at least one valid EGL image.

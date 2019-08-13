@@ -29,15 +29,15 @@ This explains how the tracker works together with the web interface (https://git
 
 The most important files are:
 
-- `raspiballs` --- The program that runs the balltracking code on the GPU and detects if a goal is scored
-- `webproxy.py` --- Python script that handles communication between web interface
+- `raspiballs` - The program that runs the balltracking code on the GPU and detects if a goal is scored
+- `webproxy.py` - Python script that handles communication between web interface
 
 Other files:
 
-- `run-tracker.sh` --- Wrapper around `raspiballs` that sets correct resolution
-- `generate-replay.sh` --- Concatenates the last few replay fragments into one replay file
-- `player` --- Program that replays videos fullscreen at custom framerate. It does *not* do tracking.
-- `replay.sh` --- Wrapper around `player`
+- `run-tracker.sh` - Wrapper around `raspiballs` that sets correct resolution
+- `generate-replay.sh` - Concatenates the last few replay fragments into one replay file
+- `player` - Program that replays videos fullscreen at custom framerate. It does *not* do tracking.
+- `replay.sh` - Wrapper around `player`
 
 The python script `webproxy.py` acts as a proxy between the web interface (i.e. the javascript code) and the `raspiballs` program.
 It runs a websocket server, and the web interface is opened, the javascript code will try to connect to the websocket server.
