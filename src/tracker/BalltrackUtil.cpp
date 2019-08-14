@@ -148,7 +148,7 @@ Texture createFilterTexture(int w, int h, GLint scaling) {
     return tex;
 }
 
-static void brga_to_rgba(uint8_t *buffer, size_t size)
+void brga_to_rgba(uint8_t *buffer, size_t size)
 {
    uint8_t* out = buffer;
    uint8_t* end = buffer + size;

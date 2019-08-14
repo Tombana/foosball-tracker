@@ -13,23 +13,20 @@
 #include <unistd.h>
 
 // Constants
-static float goalWidth = 0.15f;
-static float goalHeight = 0.35f;
+float goalWidth = 0.15f;
+float goalHeight = 0.35f;
 
 
 // Ball history
-static int historyCount = 120;
-static POINT balls[120];
-static int ballFrames[120];
-static int ballCur = 0;
+const int historyCount = 120;
+POINT balls[historyCount]; // in field coordinates
+int ballFrames[historyCount];
+POINT ballsScreen[historyCount]; // in screen coordinates
+int ballCur = 0;
 
-static int frameNumber = 0;
+int ballMissing = 1000;
 
-static FIELD field;
-
-static int ballMissing = 1000;
-
-static int analysis_send_to_server(const char* str) {
+int analysis_send_to_server(const char* str) {
     int fd = open("/tmp/foos-debug.in", O_WRONLY | O_NONBLOCK);
     if (fd > 0) {
         write(fd, str, strlen(str));
@@ -39,14 +36,9 @@ static int analysis_send_to_server(const char* str) {
     return 0;
 }
 
-static int timeseriesfile = 0;
+int timeseriesfile = 0;
 
 int analysis_init() {
-    field.xmin = -0.8f;
-    field.xmax =  0.8f;
-    field.ymin = -0.8f;
-    field.ymax =  0.8f;
-
 #ifdef GENERATE_TIMESERIES
     timeseriesfile = open("/tmp/timeseries.txt", O_WRONLY);
     if (!timeseriesfile) {
@@ -61,19 +53,18 @@ int analysis_init() {
 // Returns 0 when not in goal
 // Returns 1 when in left goal
 // Returns 2 when in right goal
-static int isInGoal(POINT ball) {
-    float yAvg = 0.5f * (field.ymin + field.ymax);
-    if (ball.y > yAvg - goalHeight && ball.y < yAvg + goalHeight) {
-        if (ball.x < field.xmin + goalWidth) {
+int isInGoal(POINT ball) {
+    if (ball.y > -goalHeight && ball.y < goalHeight) {
+        if (ball.x < -1.0f + goalWidth) {
             return 1;
-        } else if (ball.x > field.xmax - goalWidth) {
+        } else if (ball.x > 1.0f - goalWidth) {
             return 2;
         }
     }
     return 0;
 }
 
-static float distSq(POINT a, POINT b) {
+float distSq(POINT a, POINT b) {
     float dx = a.x - b.x;
     float dy = a.y - b.y;
     return dx * dx + dy * dy;
@@ -90,22 +81,20 @@ static float distSq(POINT a, POINT b) {
 // 7 -- red defender
 // 8 -- red keeper
 //
-static int getPlayerBar(POINT ball) {
-    float x = (ball.x - field.xmin) / (field.xmax - field.xmin);
-
-    if (x < 0.0f || x >= 1.0f)
+int getPlayerBar(POINT ball) {
+    if (ball.x < -1.0f || ball.x >= 1.0f)
         return 0;
 
-    return (int)(1.0f + 8.0f * x);
+    return (int)(1.0f + 8.0f * (0.5f * (ball.x + 1.0f)));
 }
 
-static int playerBarFrameThreshold = 4;
+int playerBarFrameThreshold = 4;
 
-static int barTeams[9] = {0, 1, 1, 2, 1, 2, 1, 2, 2};
+int barTeams[9] = {0, 1, 1, 2, 1, 2, 1, 2, 2};
 
 // team == 1 -> goal for red, scored by blue
 // team == 2 -> goal for blue, scored by red
-static int getPlayerWhoScored(int team) {
+int getPlayerWhoScored(int team) {
     int curIdx = ballCur;
     int player = 0;
     int hits = 0;
@@ -133,7 +122,7 @@ static int getPlayerWhoScored(int team) {
     return 0;
 }
 
-int analysis_update(FIELD newField, POINT ball, int ballFound) {
+int analysis_update(int frameNumber, FIELD field, POINT ball, bool ballFound) {
     ++frameNumber;
 
     static int sendSAVE = 0;
@@ -148,12 +137,6 @@ int analysis_update(FIELD newField, POINT ball, int ballFound) {
         }
     }
 
-    // Time average for field, because it fluctuates too much
-    field.xmin = 0.98f * field.xmin + 0.02 * newField.xmin;
-    field.xmax = 0.98f * field.xmax + 0.02 * newField.xmax;
-    field.ymin = 0.98f * field.ymin + 0.02 * newField.ymin;
-    field.ymax = 0.98f * field.ymax + 0.02 * newField.ymax;
-
     int prevIdx = (ballCur == 0 ? historyCount - 1 : ballCur - 1);
     if (ballFound) {
         if (ballMissing >= 30) {
@@ -163,6 +146,8 @@ int analysis_update(FIELD newField, POINT ball, int ballFound) {
 
         balls[ballCur] = ball;
         ballFrames[ballCur] = frameNumber;
+        ballsScreen[ballCur].x = (field.xmax - field.xmin) * 0.5f * (1.0f + ball.x) + field.xmin;
+        ballsScreen[ballCur].y = (field.ymax - field.ymin) * 0.5f * (1.0f + ball.y) + field.ymin;
         ++ballCur;
 
         // Check for fast shot to goal
@@ -171,15 +156,14 @@ int analysis_update(FIELD newField, POINT ball, int ballFound) {
         int frameDiffs = frameNumber - ballFrames[prevIdx];
         if (frameDiffs <= 20) {
             // Distance should be large ??
-            // At least x % of field width per frame
-            float distThreshold = ((float)frameDiffs) * 0.10f * (field.xmax - field.xmin);
+            // At least x % of field width ( = 2.0f ) per frame
+            float distThreshold = ((float)frameDiffs) * 0.10f * 2.0f;
             if (distSq(prevBall, ball) > distThreshold * distThreshold ) {
-                float yAvg = 0.5f * (field.ymin + field.ymax);
-                if (ball.y > yAvg - goalHeight && ball.y < yAvg + goalHeight && 
-                        (ball.x < field.xmin + 3.0f * goalWidth || ball.x > field.xmax - 3.0f * goalWidth) ) {
+                if (ball.y > -goalHeight && ball.y < goalHeight && 
+                        (ball.x < -1.0f + 3.0f * goalWidth || ball.x > 1.0f - 3.0f * goalWidth) ) {
                     sendSAVE = 1;
                 } else {
-                    //analysis_send_to_server("FAST\n");
+                    //sendFAST = 1;
                 }
             }
         }
@@ -227,7 +211,7 @@ int analysis_update(FIELD newField, POINT ball, int ballFound) {
 void draw_square(float xmin, float xmax, float ymin, float ymax, uint32_t color);
 void draw_line_strip(POINT* xys, int count, uint32_t color);
 
-int analysis_draw() {
+int analysis_draw(FIELD field) {
     // Draw green bounding box
     draw_square(field.xmin, field.xmax, field.ymin, field.ymax, 0xff00ff00);
     float yAvg = 0.5f * (field.ymin + field.ymax);
@@ -238,8 +222,8 @@ int analysis_draw() {
 
     // Draw line for ball history
     // Be carefull with circular buffer
-    draw_line_strip(&balls[0], ballCur, 0xffff0000);
-    draw_line_strip(&balls[ballCur], historyCount - ballCur, 0xffff0000);
+    draw_line_strip(&ballsScreen[0], ballCur, 0xffff0000);
+    draw_line_strip(&ballsScreen[ballCur], historyCount - ballCur, 0xffff0000);
 
     // Draw squares on detection points
     for (int i = ballCur - 20; i < ballCur; ++i) {
@@ -250,7 +234,7 @@ int analysis_draw() {
         float size = 0.002f * time;
 
         int idx = (i < 0 ? i + historyCount : i);
-        POINT* pt = &balls[idx];
+        POINT* pt = &ballsScreen[idx];
         draw_square(pt->x - 0.5f * size, pt->x + 0.5f * size, pt->y - size, pt->y + size, color);
     }
 
