@@ -1,5 +1,5 @@
 // Mostly taken from RaspiTexUtil
-#include "BalltrackUtil.h"
+#include "util.h"
 #include "tga.h"
 #include <stdio.h>
 

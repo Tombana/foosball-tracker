@@ -27,7 +27,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include "../tracker/BalltrackCore.h"
+#include "../tracker/core.h"
 #include "RaspiTex.h"
 #include "RaspiTexUtil.h"
 #include <GLES2/gl2.h>

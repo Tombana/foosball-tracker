@@ -53,9 +53,9 @@ link_directories(/opt/vc/lib)
 set (COMMON_SOURCES
     src/tracker/tga.c
     src/tracker/balltrackshaders/allshaders.h
-    src/tracker/BalltrackCore.cpp
-    src/tracker/BalltrackUtil.cpp
-    src/tracker/BallAnalysis.cpp
+    src/tracker/core.cpp
+    src/tracker/util.cpp
+    src/tracker/analysis.cpp
 )
 
 set (RECORDER_SOURCES

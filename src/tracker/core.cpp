@@ -3,9 +3,9 @@ Copyright (c) 2018, Tom Bannink
 MIT License
 */
 
-#include "BalltrackCore.h"
-#include "BalltrackUtil.h"
-#include "BallAnalysis.h"
+#include "core.h"
+#include "util.h"
+#include "analysis.h"
 #include <string.h>
 
 // Divisions by 2 of 720p with correct aspect ratio

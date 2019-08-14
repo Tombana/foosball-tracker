@@ -44,7 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "triangle.h"
 #include <pthread.h>
 
-#include "../tracker/BalltrackCore.h"
+#include "../tracker/core.h"
 
 // This has to be exactly the size of the file that is being played
 // TODO: Determine from file
