@@ -89,7 +89,7 @@ static XREF_T awb_map[] =
    {"incandescent",  MMAL_PARAM_AWBMODE_INCANDESCENT},
    {"flash",         MMAL_PARAM_AWBMODE_FLASH},
    {"horizon",       MMAL_PARAM_AWBMODE_HORIZON},
-   {"greyworld",     MMAL_PARAM_AWBMODE_GREYWORLD}
+   //{"greyworld",     MMAL_PARAM_AWBMODE_GREYWORLD}
 };
 
 static const int awb_map_size = sizeof(awb_map) / sizeof(awb_map[0]);
