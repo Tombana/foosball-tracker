@@ -211,6 +211,10 @@ int analysis_update(int frameNumber, FIELD field, POINT ball, bool ballFound) {
 void draw_square(float xmin, float xmax, float ymin, float ymax, uint32_t color);
 void draw_line_strip(POINT* xys, int count, uint32_t color);
 
+// TODO: This is called from the GL thread
+// whereas the update function is called from a separate thread
+// The `field` and `ballsScreen` are not yet properly protected
+// from threading issues
 int analysis_draw(FIELD field) {
     // Draw green bounding box
     draw_square(field.xmin, field.xmax, field.ymin, field.ymax, 0xff00ff00);

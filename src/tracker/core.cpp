@@ -7,6 +7,7 @@ MIT License
 #include "util.h"
 #include "analysis.h"
 #include <string.h>
+#include "interface/vcos/vcos.h" // For threads and semaphores
 
 // Divisions by 2 of 720p with correct aspect ratio
 // 1280,720
@@ -55,7 +56,18 @@ Texture rtt_tex2; // Texture for render-to-texture
 Texture rtt_tex3; // Texture for render-to-texture
 Texture rtt_copytex;
 
-uint8_t* pixelbuffer; // For reading out result
+constexpr int PIXELBUFFER_COUNT = 4;
+
+uint8_t* pixelbuffers[PIXELBUFFER_COUNT]; // For reading out result
+
+int nextEmptyBuffer = 0; // For writing buffers
+int nextFullBuffer = 0;  // For reading buffers
+
+void* analysis_thread(void *arg);
+int analysis_stop = 0;
+VCOS_THREAD_T analysis_thread_handle;
+VCOS_SEMAPHORE_T semEmptyCount; // analysis -> GL signal
+VCOS_SEMAPHORE_T semFullCount;  // GL -> analysis signal
 
 // Which of the phases to show on screen for debugging purposes
 #define DEBUG_TEXTURE 3
@@ -211,10 +223,12 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
 
     // Buffer to read out pixels from last texture
     uint32_t buffer_size = width3 * height3 * 4;
-    pixelbuffer = (uint8_t*)calloc(buffer_size, 1);
-    if (!pixelbuffer) {
-        rc = -1;
-        return rc;
+    for (int i = 0; i < PIXELBUFFER_COUNT; ++i) {
+        pixelbuffers[i] = (uint8_t*)malloc(buffer_size);
+        if (!pixelbuffers[i]) {
+            printf("Could not allocate balltracking pixelbuffer");
+            return -1;
+        }
     }
 
     printf("Generating framebuffer object\n");
@@ -251,8 +265,91 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
     GLCHK(glDisable(GL_BLEND));
     GLCHK(glDisable(GL_DEPTH_TEST));
 
-    return rc;
+    // Create a binary and N-ary semaphore and start an analysis thread
+    // Also allocate N pixelbuffers
+    // For every glReadPixels, use semaphores to get a free buffer
+    // and read into there.
+    // Then the analysis thread can consume the buffers from there,
+    // while the GL thread continues.
+    VCOS_STATUS_T status;
+
+    status = vcos_semaphore_create(&semFullCount, "analsys_fullcount", 0);
+    if (status != VCOS_SUCCESS) {
+        printf("Failed to create balltrack semaphore %d", status);
+        return -1;
+    }
+
+    status = vcos_semaphore_create(&semEmptyCount, "analsys_emptycount", PIXELBUFFER_COUNT);
+    if (status != VCOS_SUCCESS) {
+        printf("Failed to create balltrack semaphore %d", status);
+        return -1;
+    }
+
+    status = vcos_thread_create(&analysis_thread_handle, "analysis-thread", NULL, analysis_thread, 0);
+    if (status != VCOS_SUCCESS) {
+        printf("Failed to start balltrack analysis thread %d", status);
+        return -1;
+    }
+
+    return 0;
 }
+
+void balltrack_core_term()
+{
+    // Wait for analysis thread to finish
+    analysis_stop = 1;
+    vcos_thread_join(&analysis_thread_handle, NULL);
+    vcos_semaphore_delete(&semFullCount);
+    vcos_semaphore_delete(&semEmptyCount);
+
+    // TODO: Cleanup textures, shaders, everything
+    return;
+}
+
+
+void balltrack_process_buffer(uint8_t* pixelbuffer);
+
+void* analysis_thread(void *arg)
+{
+    while (analysis_stop == 0) {
+        // Wait for GL thread till there is a full buffer
+        vcos_semaphore_wait(&semFullCount);
+
+        // Get the buffer
+        uint8_t* buffer = pixelbuffers[nextFullBuffer];
+        ++nextFullBuffer;
+        if (nextFullBuffer == PIXELBUFFER_COUNT)
+            nextFullBuffer = 0;
+
+        // Process the buffer
+        balltrack_process_buffer(buffer);
+
+        // Notify GL thread that a buffer is available
+        vcos_semaphore_post(&semEmptyCount);
+    }
+    return 0;
+}
+
+void balltrack_readout() {
+    int width = width3;
+    int height = height3;
+    uint8_t* buf = 0;
+
+    // Wait for analysis thread for an empty buffer
+    vcos_semaphore_wait(&semEmptyCount);
+
+    // Claim it
+    buf = pixelbuffers[nextEmptyBuffer];
+    ++nextEmptyBuffer;
+    if (nextEmptyBuffer == PIXELBUFFER_COUNT)
+        nextEmptyBuffer = 0;
+
+    GLCHK(glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buf));
+
+    // Notify analysis thread
+    vcos_semaphore_post(&semFullCount);
+}
+
 
 // x,y are coordinates in [-1,1]x[-1,1] range
 void draw_line_strip(POINT* xys, int count, uint32_t color) {
@@ -327,7 +424,6 @@ int render_pass(SHADER_PROGRAM_T* shader, Texture source, Texture target) {
 int frameNumber = 0;
 
 FIELD field;
-void balltrack_readout(int width, int height);
 
 int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint srctype)
 {
@@ -371,7 +467,7 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
     render_pass(&balltrack_shader_3, rtt_tex2, rtt_tex3);
 #endif
     // Readout result
-    balltrack_readout(width3, height3);
+    balltrack_readout();
     // Third pass: render to screen
     GLCHK(glActiveTexture(GL_TEXTURE1));
 #if DEBUG_TEXTURE == 1
@@ -388,15 +484,13 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
     return 0;
 }
 
-void balltrack_readout(int width, int height) {
+void balltrack_process_buffer(uint8_t* pixelbuffer) {
+    int width = width3;
+    int height = height3;
+
     // Read texture
     // It packs two pixels into one:
     // RGBA is red,green,red,green filter values for neighbouring pixels
-    if (pixelbuffer == 0) {
-        return;
-    }
-
-    GLCHK(glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixelbuffer));
 
     // pixelbuffer[i*height + j] is i pixels from bottom and j from left
     int gxmin = (int)(0.45f * 2.0f * width);

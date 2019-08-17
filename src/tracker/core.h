@@ -29,6 +29,9 @@ int balltrack_core_init(int externalSamplerExtension, int flipY);
 //
 int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint srctype);
 
+// Cleanup
+void balltrack_core_term();
+
 #ifdef __cplusplus
 }
 #endif

@@ -79,6 +79,11 @@ static int balltrack_redraw(RASPITEX_STATE* state)
     return balltrack_core_process_image(state->width, state->height, state->texture, GL_TEXTURE_EXTERNAL_OES);
 }
 
+static void balltrack_term(RASPITEX_STATE* state) {
+    balltrack_core_term();
+    raspitexutil_gl_term(state);
+}
+
 int balltrack_open(RASPITEX_STATE *state)
 {
    state->ops.gl_init = balltrack_init;
@@ -89,6 +94,10 @@ int balltrack_open(RASPITEX_STATE *state)
    state->ops.update_v_texture = raspitexutil_update_v_texture;
 #endif
    state->ops.update_texture = raspitexutil_update_texture;
+
+   state->ops.gl_term = balltrack_term;
+
    return 0;
 }
+
 

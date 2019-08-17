@@ -299,6 +299,8 @@ static void init_textures(STATE_T *state)
 static void exit_func(void)
 // Function to be passed to atexit().
 {
+    balltrack_core_term();
+
    if (eglImage != 0)
    {
       if (!eglDestroyImageKHR(state->display, (EGLImageKHR) eglImage))
