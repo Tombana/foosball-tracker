@@ -61,9 +61,12 @@ set (COMMON_SOURCES
 set (SHADER_SOURCES
     src/tracker/balltrackshaders/debug.frag
     src/tracker/balltrackshaders/display.frag
+    src/tracker/balltrackshaders/downsample.frag
+    src/tracker/balltrackshaders/fixedcolor.frag
+    src/tracker/balltrackshaders/huefilterball.frag
+    src/tracker/balltrackshaders/huefilterfield.frag
     src/tracker/balltrackshaders/phase1.frag
     src/tracker/balltrackshaders/phase2.frag
-    src/tracker/balltrackshaders/plain.frag
     src/tracker/balltrackshaders/vshader.vert
 )
 

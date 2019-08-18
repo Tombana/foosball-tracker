@@ -55,5 +55,5 @@ void main(void) {
         dbgValue = dbgpixel.a;
     }
 
-    gl_FragColor = 0.5 * campixel + 0.5 * dbgValue * vec4(1.0, 0.0, 1.0, 1.0);
+    gl_FragColor = (1.0 - dbgValue) * campixel + dbgValue * vec4(1.0, 0.0, 1.0, 1.0);
 }
