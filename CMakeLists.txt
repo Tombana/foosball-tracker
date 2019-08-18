@@ -58,6 +58,14 @@ set (COMMON_SOURCES
     src/tracker/analysis.cpp
 )
 
+set (SHADER_SOURCES
+    src/tracker/balltrackshaders/display.frag
+    src/tracker/balltrackshaders/phase1.frag
+    src/tracker/balltrackshaders/phase2.frag
+    src/tracker/balltrackshaders/plain.frag
+    src/tracker/balltrackshaders/vshader.vert
+)
+
 set (RECORDER_SOURCES
     src/recorder/RaspiCamControl.c
     src/recorder/RaspiCLI.c
@@ -79,9 +87,10 @@ set (PLAYER_SOURCES
     src/player/libilclient/ilcore.c
     )
 
-add_custom_command(OUTPUT src/balltrackshaders/allshaders.h
+add_custom_command(OUTPUT src/tracker/balltrackshaders/allshaders.h
                    COMMAND make allshaders.h
-                   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/balltrackshaders
+                   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/tracker/balltrackshaders
+                   DEPENDS ${SHADER_SOURCES}
 )
 
 add_executable(raspiballs ${COMMON_SOURCES} ${RECORDER_SOURCES})
