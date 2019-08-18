@@ -59,6 +59,7 @@ set (COMMON_SOURCES
 )
 
 set (SHADER_SOURCES
+    src/tracker/balltrackshaders/debug.frag
     src/tracker/balltrackshaders/display.frag
     src/tracker/balltrackshaders/phase1.frag
     src/tracker/balltrackshaders/phase2.frag

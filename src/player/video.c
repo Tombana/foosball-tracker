@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include "bcm_host.h"
 #include "libilclient/ilclient.h"
@@ -43,15 +44,48 @@ static void* eglImage = 0;
 char* filename = "/opt/vc/src/hello_pi/hello_video/test.h264";
 int fps = 30;
 
-void my_fill_buffer_done(void* data, COMPONENT_T* comp)
+static void update_fps()
 {
-  if (OMX_FillThisBuffer(ilclient_get_handle(egl_render), eglBuffer) != OMX_ErrorNone)
+   static int frame_count = 0;
+   static long long time_start = 0;
+   long long time_now;
+   struct timeval te;
+   float fps;
+
+   frame_count++;
+
+   gettimeofday(&te, NULL);
+   time_now = te.tv_sec * 1000LL + te.tv_usec / 1000;
+
+   if (time_start == 0)
    {
-      printf("OMX_FillThisBuffer failed in callback\n");
-      exit(1);
+      time_start = time_now;
+   }
+   else if (time_now - time_start > 5000)
+   {
+      fps = (float) frame_count / ((time_now - time_start) / 1000.0);
+      frame_count = 0;
+      time_start = time_now;
+      printf("%3.2f FPS\n", fps);
    }
 }
 
+// This is called when the texture buffer is filled
+void my_fill_buffer_done(void* data, COMPONENT_T* comp) {
+    update_fps();
+
+    // TODO: Tell the rendering thread that it should render
+    // and then wait for the rendering thread to finish
+    // Probably just use two semaphores for this.
+
+    // Tell the video decoder that this buffer is handled
+    // and can be filled with the next video frame
+    if (OMX_FillThisBuffer(ilclient_get_handle(egl_render), eglBuffer) !=
+        OMX_ErrorNone) {
+        printf("OMX_FillThisBuffer failed in callback\n");
+        exit(1);
+    }
+}
 
 // Modified function prototype to work with pthreads
 void *video_decode_test(void* arg)
