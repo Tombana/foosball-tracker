@@ -10,10 +10,6 @@ MIT License
 #include "interface/vcos/vcos.h" // For threads and semaphores
 
 
-// Enable this to use the debug shader to show
-// the results of all intermediate phases on screen
-#define DEBUG_TEXTURES
-
 // Update the size of the (green) field bounding box every X frames
 constexpr int FieldUpdateDelay = 10;
 

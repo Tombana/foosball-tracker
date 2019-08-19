@@ -10,7 +10,6 @@
 
 #include <stdio.h>
 
-#define CHECK_GL_ERRORS
 #ifdef CHECK_GL_ERRORS
 #define GLCHK(X) \
 { \

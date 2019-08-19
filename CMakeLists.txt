@@ -1,8 +1,26 @@
 cmake_minimum_required(VERSION 3.1)
 project(foosballtracker)
 
-#set(THREADS_PREFER_PTHREAD_FLAG ON)
-#find_package(Threads REQUIRED)
+
+# Comment this out for a release build
+add_definitions(-DCHECK_GL_ERRORS) # Call glGetError after *every* GL call
+add_definitions(-DDEBUG_TEXTURES) # Use debug shader to show intermediate phases on screen
+
+
+
+#
+# In case you want to get the libs and headers directly from the `userland` repository
+# as a subdirectory of this repository.
+#
+#SET(USERLAND_DIR ${PROJECT_SOURCE_DIR}/userland)
+#include_directories(${USERLAND_DIR}) # For interface and vcinclude
+#include_directories(${USERLAND_DIR}/host_applications/linux/libs/bcm_host/include)
+#include_directories(${USERLAND_DIR}/interface/khronos/include)
+#link_directories(${USERLAND_DIR}/build/lib)
+
+include_directories(/opt/vc/include)
+link_directories(/opt/vc/lib)
+
 
 # Set --no-as-needed to stop the linker discarding mmal_vc_client
 # as it can't see that the constructor registers a load of functionality
@@ -32,22 +50,6 @@ add_definitions(-DUSE_EXTERNAL_OMX)
 add_definitions(-DHAVE_LIBBCM_HOST)
 add_definitions(-DUSE_EXTERNAL_LIBBCM_HOST)
 
-
-
-include_directories(${PROJECT_SOURCE_DIR}/src)
-
-#
-# In case you want to get the libs and headers directly from the `userland` repository
-# as a subdirectory of this repository.
-#
-#SET(USERLAND_DIR ${PROJECT_SOURCE_DIR}/userland)
-#include_directories(${USERLAND_DIR}) # For interface and vcinclude
-#include_directories(${USERLAND_DIR}/host_applications/linux/libs/bcm_host/include)
-#include_directories(${USERLAND_DIR}/interface/khronos/include)
-#link_directories(${PROJECT_SOURCE_DIR}/userland/build/lib)
-
-include_directories(/opt/vc/include)
-link_directories(/opt/vc/lib)
 
 
 set (COMMON_SOURCES
@@ -109,7 +111,6 @@ set (RECORDER_LIBS
     brcmGLESv2
     brcmEGL
     m
-    #Threads::Threads
     pthread
     dl
     rt

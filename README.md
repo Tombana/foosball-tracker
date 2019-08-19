@@ -60,7 +60,9 @@ It might ask for a sudo password after building, in order to install the files i
 
 ## Compiling
 
-Use the `buildme` script to build
+At the top of `CMakeLists.txt`, choose whether to do a debug or release build.
+
+Use the `buildme` script to build.
 
 ## Running
 
