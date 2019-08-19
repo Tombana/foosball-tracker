@@ -30,6 +30,11 @@ const int height0 = 720;
 const int width1  = 640 / 2; // RGBA packs two pairs
 const int height1 = 360;
 
+const int fieldwidth1  = 640 / 4; // RGBA can store 4 values at once
+const int fieldheight1 = 360;
+const int fieldwidth2  = 80 / 4;
+const int fieldheight2 = 45;
+
 #ifdef THREE_PHASES
 // -- From phase 1 to phase 2: dilate 'red' filter, do not erode 'orange filter' but rescale?
 // -- 4x4 pixels to 1 pixel (but sample 12x12 pixels to 1 pixel)
@@ -91,7 +96,7 @@ SHADER_PROGRAM_T shader_downsample =
 {
     .vertex_source = (char*)vshader_vert,
     .fragment_source = (char*)downsample_frag,
-    .uniforms = {ShaderUniform("tex", 0), ShaderUniform("tex_unit", 1.0f / (float)width1, 1.0f / (float)height1)},
+    .uniforms = {ShaderUniform("tex", 0), ShaderUniform("tex_unit", 1.0f / (float)fieldwidth1, 1.0f / (float)fieldheight1)},
     .attribute_names = {"vertex"},
 };
 
@@ -290,8 +295,8 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
     rtt_tex3 = rtt_tex2; // hmmmm....
 #endif
 
-    field_tex1 = createFilterTexture(width1, height1, GL_LINEAR);
-    field_tex2 = createFilterTexture(width2, height2, GL_LINEAR);
+    field_tex1 = createFilterTexture(fieldwidth1, fieldheight1, GL_LINEAR);
+    field_tex2 = createFilterTexture(fieldwidth2, fieldheight2, GL_LINEAR);
 
 #ifdef DO_DIFF
     rtt_copytex = createFilterTexture(width0, height0, GL_NEAREST);
