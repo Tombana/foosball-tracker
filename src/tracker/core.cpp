@@ -491,20 +491,23 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
     render_pass(&shader_downsample, ball_tex1, ball_tex2);
     // Readout result
     balltrack_readout();
-    
+
     // Last pass: render to screen
 #ifdef DEBUG_TEXTURES
     GLCHK(glActiveTexture(GL_TEXTURE1));
     GLCHK(glBindTexture(GL_TEXTURE_2D, ball_tex1.id));
     GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 
     GLCHK(glActiveTexture(GL_TEXTURE2));
     GLCHK(glBindTexture(GL_TEXTURE_2D, ball_tex2.id));
     GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 
     GLCHK(glActiveTexture(GL_TEXTURE3));
     GLCHK(glBindTexture(GL_TEXTURE_2D, field_tex2.id));
     GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 
     render_pass(&shader_debug, input, screen);
 
@@ -512,12 +515,15 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
     GLCHK(glActiveTexture(GL_TEXTURE1));
     GLCHK(glBindTexture(GL_TEXTURE_2D, ball_tex1.id));
     GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
     GLCHK(glActiveTexture(GL_TEXTURE2));
     GLCHK(glBindTexture(GL_TEXTURE_2D, ball_tex2.id));
     GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
     GLCHK(glActiveTexture(GL_TEXTURE3));
     GLCHK(glBindTexture(GL_TEXTURE_2D, field_tex2.id));
     GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 #else
     render_pass(&shader_simple, input, screen);
 #endif
@@ -616,7 +622,7 @@ void balltrack_process_field_buffer(uint8_t* pixelbuffer) {
         for (int x = 0; x < width; ++x) {
             uint32_t value = (uint32_t) *ptr++;
 
-            if (value > 150) {
+            if (value > 200) {
                 if (x < fieldxmin) fieldxmin = x;
                 if (x > fieldxmax) fieldxmax = x;
                 if (y < fieldymin) fieldymin = y;

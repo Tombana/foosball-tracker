@@ -19,12 +19,17 @@ uniform sampler2D tex;
 varying vec2 texcoord;
 uniform vec2 tex_unit;
 void main(void) {
+    int x = -3;
     for (int i = 0; i < 4; ++i) {
-        int x = -3 + 2 * i;
         float avg = 0.0;
         for (int y = -3; y <= 3; y += 2) {
-            avg += dot(vec4(1.0), texture2D(tex, texcoord + vec2(x, y) * tex_unit));
+            vec4 v = texture2D(tex, texcoord + vec2(x, y) * tex_unit);
+            avg += v[0];
+            avg += v[1];
+            avg += v[2];
+            avg += v[3];
         }
-        gl_FragColor[i] = 0.25 * avg;
+        gl_FragColor[i] = 0.0625 * avg;
+        x += 2;
     }
 }

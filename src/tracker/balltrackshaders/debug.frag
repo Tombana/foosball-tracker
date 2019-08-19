@@ -42,17 +42,16 @@ void main(void) {
 
     // dbgpixel can hold 4 separate values in r,g,b,a
     // So we need to know the width of the dbg texture
-
     float dbgValue;
     float interpixelX = mod(coord.x, pixelwidth);
     if ( interpixelX < 0.25 * pixelwidth ) {
-        dbgValue = dbgpixel.r;
+        dbgValue = dbgpixel[0];
     } else if (interpixelX < 0.5 * pixelwidth ) {
-        dbgValue = dbgpixel.g;
+        dbgValue = dbgpixel[1];
     } else if (interpixelX < 0.75 * pixelwidth ) {
-        dbgValue = dbgpixel.b;
+        dbgValue = dbgpixel[2];
     } else {
-        dbgValue = dbgpixel.a;
+        dbgValue = dbgpixel[3];
     }
 
     gl_FragColor = (1.0 - dbgValue) * campixel + dbgValue * vec4(1.0, 0.0, 1.0, 1.0);

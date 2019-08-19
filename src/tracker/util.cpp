@@ -188,3 +188,25 @@ int dump_frame(int width, int height, const char* filename) {
     return 0;
 }
 
+int dump_buffer_to_console(int width, int height) {
+    uint8_t* buffer = (uint8_t*)malloc(width * height * 4);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+
+    uint8_t* ptr = buffer;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width*4; ++x) {
+            uint8_t value = *ptr++;
+            char o = '.';
+            if (value > 150)
+                o = 'X';
+            else if (value > 50)
+                o = 'x';
+            else if (value > 10)
+                o = ',';
+            printf("%c", o);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+

@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <math.h>
 #include <assert.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 #include "bcm_host.h"
 
@@ -325,6 +326,32 @@ static void exit_func(void)
 extern char* filename;
 extern int fps;
 
+static void update_render_fps()
+{
+   static int frame_count = 0;
+   static long long time_start = 0;
+   long long time_now;
+   struct timeval te;
+   float fps;
+
+   frame_count++;
+
+   gettimeofday(&te, NULL);
+   time_now = te.tv_sec * 1000LL + te.tv_usec / 1000;
+
+   if (time_start == 0)
+   {
+      time_start = time_now;
+   }
+   else if (time_now - time_start > 5000)
+   {
+      fps = (float) frame_count / ((time_now - time_start) / 1000.0);
+      frame_count = 0;
+      time_start = time_now;
+      printf("Renderer: %3.2f FPS\n", fps);
+   }
+}
+
 int main (int argc, char **argv)
 {
     if (argc >= 2) {
@@ -349,6 +376,7 @@ int main (int argc, char **argv)
    while (!terminate)
    {
       redraw_scene(state);
+      update_render_fps();
    }
    exit_func();
    return 0;

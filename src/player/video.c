@@ -66,7 +66,7 @@ static void update_fps()
       fps = (float) frame_count / ((time_now - time_start) / 1000.0);
       frame_count = 0;
       time_start = time_now;
-      printf("%3.2f FPS\n", fps);
+      printf("Decoder: %3.2f FPS\n", fps);
    }
 }
 

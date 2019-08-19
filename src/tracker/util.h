@@ -79,4 +79,6 @@ Texture createFilterTexture(int w, int h, GLint scaling);
 
 int dump_frame(int width, int height, const char* filename);
 
+int dump_buffer_to_console(int width, int height);
+
 #endif /* BALLTRACKUTIL_H */
