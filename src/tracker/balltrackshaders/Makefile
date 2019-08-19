@@ -1,4 +1,4 @@
-SHADERS=debug.frag diff.frag display.frag downsample.frag fixedcolor.frag huefilterball.frag huefilterfield.frag phase1.frag phase2.frag phase2_dilatered.frag phase3.frag plain.frag vshader.vert vshader_yflip.vert
+SHADERS=debug.frag diff.frag downsample.frag fixedcolor.frag huefilterball.frag huefilterfield.frag phase1.frag phase2.frag phase2_dilatered.frag phase3.frag simple.frag yuvsource.frag vshader.vert vshader_yflip.vert
 #SHADERFILES=$(patsubst %, balltrackshaders/%, $(SHADERS))
 
 # First append terminating 0, save result in temporary build directory, then run xxd -i on that.

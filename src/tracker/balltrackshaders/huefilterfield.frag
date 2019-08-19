@@ -28,9 +28,9 @@ void main(void) {
     vec4 col2 = texture2D(tex, texcoord - vec2(1,0) * tex_unit);
     vec4 col3 = texture2D(tex, texcoord + vec2(1,0) * tex_unit);
     vec4 col4 = texture2D(tex, texcoord + vec2(3,0) * tex_unit);
-    gl_FragColor.r = getFilter(col1);
-    gl_FragColor.g = getFilter(col2);
-    gl_FragColor.b = getFilter(col3);
-    gl_FragColor.a = getFilter(col4);
+    gl_FragColor[0] = getFilter(col1);
+    gl_FragColor[1] = getFilter(col2);
+    gl_FragColor[2] = getFilter(col3);
+    gl_FragColor[3] = getFilter(col4);
 }
 

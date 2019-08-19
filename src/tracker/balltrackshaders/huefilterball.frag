@@ -49,7 +49,6 @@ float getFilter(vec4 col) {
     float chroma= value - min(col.r, min(col.g, col.b));
     float sat = (value > 0.0 ? (chroma / value) : 0.0); 
     float ballfilter = 0.0; // 0.8;
-    float greenfilter = 0.0;
     if (col.r == value) {
         if (sat > 0.35 && value > 0.15 && value < 0.95 ) {
             float hue = (col.g - col.b) / chroma;
@@ -73,10 +72,10 @@ void main(void) {
     vec4 col2 = texture2D(tex, texcoord - vec2(1,0) * tex_unit);
     vec4 col3 = texture2D(tex, texcoord + vec2(1,0) * tex_unit);
     vec4 col4 = texture2D(tex, texcoord + vec2(3,0) * tex_unit);
-    gl_FragColor.r = getFilter(col1);
-    gl_FragColor.g = getFilter(col2);
-    gl_FragColor.b = getFilter(col3);
-    gl_FragColor.a = getFilter(col4);
+    gl_FragColor[0] = getFilter(col1);
+    gl_FragColor[1] = getFilter(col2);
+    gl_FragColor[2] = getFilter(col3);
+    gl_FragColor[3] = getFilter(col4);
 }
 
 // The below version samples the source in the center of each pixel,
