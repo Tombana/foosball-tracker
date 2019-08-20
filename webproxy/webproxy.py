@@ -98,7 +98,7 @@ server.set_fn_message_received(message_received)
 class MyReadThread(threading.Thread):
     def run(self):
         print("Read thread started.")
-        fifo_file = "/tmp/foos-debug.in"
+        fifo_file = "/tmp/foosballtrackerpipe.in"
         try:
             os.mkfifo(fifo_file)
         except:

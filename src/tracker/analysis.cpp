@@ -1,11 +1,12 @@
 #include "analysis.h"
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <vector>
 
 // To communicate with the Python websocket server
 // we use a named pipe (FIFO) stored at
-//     /tmp/foos-debug.in
+//     /tmp/fooballtrackerpipe.in
 // These includes allow writing to such an object
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -252,10 +253,10 @@ int analysis_draw() {
 
 // This runs in thread separate from the GL thread
 int analysis_process_ball_buffer(uint8_t* pixelbuffer, int width, int height) {
-    int fieldxmin = (int)(0.5f * (1.0f + field.xmin) * (float)width - 1.0f);
-    int fieldxmax = (int)(0.5f * (1.0f + field.xmax) * (float)width + 1.0f);
-    int fieldymin = (int)(0.5f * (1.0f + field.ymin) * (float)height - 1.0f);
-    int fieldymax = (int)(0.5f * (1.0f + field.ymax) * (float)height + 1.0f);
+    int fieldxmin = (int)(0.5f * (1.0f + field.xmin) * (float)width - 1.5f);
+    int fieldxmax = (int)(0.5f * (1.0f + field.xmax) * (float)width + 1.5f);
+    int fieldymin = (int)(0.5f * (1.0f + field.ymin) * (float)height - 1.5f);
+    int fieldymax = (int)(0.5f * (1.0f + field.ymax) * (float)height + 1.5f);
 
     // TODO: BLUR ?
 
@@ -314,36 +315,132 @@ int analysis_process_ball_buffer(uint8_t* pixelbuffer, int width, int height) {
     return 0;
 }
 
+std::vector<int> xSums, ySums;
+
 // This runs in thread separate from the GL thread
 int analysis_process_field_buffer(uint8_t* pixelbuffer, int width, int height) {
-    // Start with a small bounding box in the middle and stretch it out
-    int fieldxmin = (int)(0.48f * width);
-    int fieldxmax = (int)(0.52f * width);
-    int fieldymin = (int)(0.48f * height);
-    int fieldymax = (int)(0.52f * height);
+    // Row and column sums
+    xSums.resize(height);
+    ySums.resize(width);
+    for (auto& x : xSums)
+        x = 0;
+    for (auto& x : ySums)
+        x = 0;
+
+    int totalValue = 0;
 
     uint8_t* ptr = pixelbuffer;
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             uint32_t value = (uint32_t) *ptr++;
-
-            if (value > 200) {
-                if (x < fieldxmin) fieldxmin = x;
-                if (x > fieldxmax) fieldxmax = x;
-                if (y < fieldymin) fieldymin = y;
-                if (y > fieldymax) fieldymax = y;
+            if (value > 20) { // Ignore *really* small noise
+                xSums[y] += value;
+                ySums[x] += value;
+                totalValue += value;
             }
         }
     }
 
-    fieldxmin -= 4;
-    fieldxmax += 4;
+    // The shape of the row sums is something like
+    //
+    //     ______
+    //     |     |
+    //     |     |
+    //    /       |
+    // \__|       \___/
+    // ----------------
+    //     <----->
+    //
+    // We want to know the location of the main peak
+    // and ignore the noise on the sides.
+    //
+    // Let M be the mean of the above thing.
+    //
+    // We simply take the leftmost and righmost points
+    // that are above 0.5 * M;
+    //
+    // The shape of the column sums has a lot of peaks
+    // because of the player bars that interrupt it.
+    // And near the goal the green field is also smaller
+    // which brings it much closer to the 'noise level'.
+    // However, 0.5 * M still seems to work, judging from plots.
+
+    int fieldxmin = 0;
+    int fieldxmax = 0;
+    int fieldymin = 0;
+    int fieldymax = 0;
+
+    int ySumBound = (totalValue / (2 * width));
+    for (int x = 0; x < width; ++x) {
+        if (ySums[x] > ySumBound) {
+            fieldxmin = x;
+            break;
+        }
+    }
+    for (int x = width - 1; x > 0; --x) {
+        if (ySums[x] > ySumBound) {
+            fieldxmax = x;
+            break;
+        }
+    }
+
+    int xSumBound = (totalValue / (2 * height));
+    for (int y = 0; y < height; ++y) {
+        if (xSums[y] > xSumBound) {
+            fieldymin = y;
+            break;
+        }
+    }
+    for (int y = height - 1; y > 0; --y) {
+        if (xSums[y] > xSumBound) {
+            fieldymax = y;
+            break;
+        }
+    }
+
+#ifdef DEBUG_SUMS
+    {
+        // For plotting in Mathematica
+        // xs = Import["sums.m"];
+        // rowsums = ListPlot[xs[[All, 1]], Joined -> True]
+        // colsums = ListPlot[xs[[All, 2]], Joined -> True]
+        static FILE* sumfile = 0;
+        if (!sumfile) {
+            sumfile = fopen("/tmp/sums.m", "w");
+            if (!sumfile)
+                printf("Unable to open /tmp/sums.m\n");
+            else
+                fprintf(sumfile, "(* {row sums, column sums} *)\n{\n");
+        } else {
+            fprintf(sumfile, "{{%d", xSums[0]);
+            for (auto i = 1u; i < xSums.size(); i++) {
+                fprintf(sumfile, ", %d", xSums[i]);
+            }
+            fprintf(sumfile, "},\n");
+
+            fprintf(sumfile, "{%d", ySums[0]);
+            for (auto i = 1u; i < ySums.size(); i++) {
+                fprintf(sumfile, ", %d", ySums[i]);
+            }
+            fprintf(sumfile, "}},\n");
+            fflush(sumfile);
+        }
+    }
+#endif
+
+    fieldxmin -= 3;
+    fieldxmax += 3;
     fieldymin -= 3;
     fieldymax += 3;
     if (fieldxmin < 0) fieldxmin = 0;
     if (fieldymin < 0) fieldymin = 0;
     if (fieldxmax >= width) fieldxmax = width - 1;
     if (fieldymax >= height) fieldymax = height - 1;
+
+    // The above values are at lower-left pixel corners
+    // Take the max values at top-right pixel corners:
+    fieldxmax++;
+    fieldymax++;
 
     // Map to [-1,1]
     FIELD newField;
@@ -353,10 +450,10 @@ int analysis_process_field_buffer(uint8_t* pixelbuffer, int width, int height) {
     newField.ymax = (2.0f * fieldymax) / ((float)height) - 1.0f;
 
     // Time average for field, because it fluctuates too much
-    field.xmin = 0.92f * field.xmin + 0.08 * newField.xmin;
-    field.xmax = 0.92f * field.xmax + 0.08 * newField.xmax;
-    field.ymin = 0.92f * field.ymin + 0.08 * newField.ymin;
-    field.ymax = 0.92f * field.ymax + 0.08 * newField.ymax;
+    field.xmin = 0.80f * field.xmin + 0.20 * newField.xmin;
+    field.xmax = 0.80f * field.xmax + 0.20 * newField.xmax;
+    field.ymin = 0.80f * field.ymin + 0.20 * newField.ymin;
+    field.ymax = 0.80f * field.ymax + 0.20 * newField.ymax;
 
     return 0;
 }

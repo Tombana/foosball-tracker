@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdint.h> // for uint8_t
+#include <cstdint> // for uint8_t
 
 // Field is given in screen coordinates; [-1,1]x[-1,1] range, the OpenGL standard
 struct FIELD {
