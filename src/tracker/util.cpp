@@ -123,6 +123,14 @@ fail:
     return -1;
 }
 
+int balltrack_delete_shader(SHADER_PROGRAM_T* p) {
+    if (!p)
+        return 0;
+    GLCHK(glDeleteShader(p->fs));
+    GLCHK(glDeleteShader(p->vs));
+    GLCHK(glDeleteProgram(p->program));
+    return 0;
+}
 
 //
 // Creates an OpenGL texture that we can use for a render pass (render-to-texture)
@@ -190,7 +198,7 @@ int dump_frame(int width, int height, const char* filename) {
 
 int dump_buffer_to_console(int width, int height) {
     uint8_t* buffer = (uint8_t*)malloc(width * height * 4);
-    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+    GLCHK(glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer));
 
     uint8_t* ptr = buffer;
     for (int y = 0; y < height; ++y) {
@@ -208,5 +216,9 @@ int dump_buffer_to_console(int width, int height) {
         printf("\n");
     }
     printf("\n");
+
+    free(buffer);
+
+    return 0;
 }
 

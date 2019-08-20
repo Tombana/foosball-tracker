@@ -43,9 +43,11 @@ Texture rtt_copytex;
 #endif
 
 
+enum PixelBufferType { BUFFERTYPE_BALL = 0, BUFFERTYPE_FIELD = 1 };
+
 constexpr int PIXELBUFFER_COUNT = 4;
+PixelBufferType pixelbufferType[PIXELBUFFER_COUNT];
 uint8_t* pixelbuffers[PIXELBUFFER_COUNT]; // For reading out result
-uint8_t* fieldbuffer;
 
 int nextEmptyBuffer = 0; // For writing buffers
 int nextFullBuffer = 0;  // For reading buffers
@@ -125,6 +127,7 @@ SHADER_PROGRAM_T shader_fixedcolor =
     .attribute_names = {"vertex"},
 };
 
+#ifdef DO_YUV
 SHADER_PROGRAM_T shader_yuv =
 {
     .vertex_source = (char*)vshader_vert,
@@ -136,6 +139,7 @@ SHADER_PROGRAM_T shader_yuv =
     },
     .attribute_names = {"vertex"},
 };
+#endif
 
 #ifdef DO_DIFF
 SHADER_PROGRAM_T shader_diff =
@@ -159,8 +163,6 @@ void replace_sampler_string(const char* text) {
 
 int balltrack_core_init(int externalSamplerExtension, int flipY)
 {
-    int rc = 0;
-
     const char* glRenderer = (const char*)glGetString(GL_RENDERER);
     printf("OpenGL renderer string: %s\n", glRenderer);
 
@@ -174,7 +176,9 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
         replace_sampler_string(shader_huefilter_field.fragment_source);
         replace_sampler_string(shader_debug.fragment_source);
         replace_sampler_string(shader_simple.fragment_source);
+#ifdef DO_YUV
         replace_sampler_string(shader_yuv.fragment_source);
+#endif
 #ifdef DO_DIFF
         replace_sampler_string(shader_diff.fragment_source);
 #endif
@@ -189,6 +193,8 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
         //balltrack_shader_2.vertex_source = BALLTRACK_VSHADER_YFLIP_SOURCE;
         //balltrack_shader_3.vertex_source = BALLTRACK_VSHADER_YFLIP_SOURCE;
     }
+
+    int rc = 0;
 
     printf("Building shader `huefilter ball`\n");
     rc = balltrack_build_shader_program(&shader_huefilter_ball);
@@ -222,10 +228,12 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
     if (rc != 0)
         return rc;
 
+#ifdef DO_YUV
     printf("Building shader `yuv`\n");
     rc = balltrack_build_shader_program(&shader_yuv);
     if (rc != 0)
         return rc;
+#endif
 
 #ifdef DO_DIFF
     printf("Building shader `diff`\n");
@@ -242,11 +250,6 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
             printf("Could not allocate balltracking ball pixelbuffer.\n");
             return -1;
         }
-    }
-    fieldbuffer = (uint8_t*)malloc(buffer_size);
-    if (!fieldbuffer) {
-        printf("Could not allocate balltracking field pixelbuffer.\n");
-        return -1;
     }
 
     printf("Generating framebuffer object\n");
@@ -311,13 +314,41 @@ void balltrack_core_term()
     vcos_semaphore_delete(&semFullCount);
     vcos_semaphore_delete(&semEmptyCount);
 
-    // TODO: Cleanup textures, shaders, everything
+    balltrack_delete_shader(&shader_huefilter_ball);
+    balltrack_delete_shader(&shader_huefilter_field);
+    balltrack_delete_shader(&shader_downsample);
+    balltrack_delete_shader(&shader_simple);
+    balltrack_delete_shader(&shader_fixedcolor);
+#ifdef DEBUG_TEXTURES
+    balltrack_delete_shader(&shader_debug);
+#endif
+#ifdef DO_YUV
+    balltrack_delete_shader(&shader_yuv);
+#endif
+#ifdef DO_DIFF
+    balltrack_delete_shader(&shader_diff);
+#endif
+
+    for (int i = 0; i < PIXELBUFFER_COUNT; ++i) {
+        if (pixelbuffers[i])
+            free(pixelbuffers[i]);
+    }
+
+    GLCHK(glBindFramebufferOES(GL_FRAMEBUFFER_OES, 0));
+    GLCHK(glDeleteFramebuffersOES(1, &fbo));
+
+    GLCHK(glDeleteTextures(1, &ball_tex1.id));
+    GLCHK(glDeleteTextures(1, &ball_tex2.id));
+    GLCHK(glDeleteTextures(1, &field_tex1.id));
+    GLCHK(glDeleteTextures(1, &field_tex2.id));
+#ifdef DO_DIFF
+    GLCHK(glDeleteTextures(1, &rtt_copytex.id));
+#endif
+
+    GLCHK(glDeleteBuffers(1, &quad_vbo));
     return;
 }
 
-
-void balltrack_process_ball_buffer(uint8_t* pixelbuffer);
-void balltrack_process_field_buffer(uint8_t* pixelbuffer);
 
 void* analysis_thread(void *arg)
 {
@@ -327,13 +358,17 @@ void* analysis_thread(void *arg)
         vcos_semaphore_wait(&semFullCount);
 
         // Get the buffer
+        auto type = pixelbufferType[nextFullBuffer];
         uint8_t* buffer = pixelbuffers[nextFullBuffer];
         ++nextFullBuffer;
         if (nextFullBuffer == PIXELBUFFER_COUNT)
             nextFullBuffer = 0;
 
         // Process the buffer
-        balltrack_process_ball_buffer(buffer);
+        if (type == BUFFERTYPE_BALL)
+            analysis_process_ball_buffer(buffer, 4 * width2, height2);
+        else
+            analysis_process_field_buffer(buffer, 4 * width2, height2);
 
         // Notify GL thread that a buffer is available
         vcos_semaphore_post(&semEmptyCount);
@@ -342,7 +377,8 @@ void* analysis_thread(void *arg)
     return 0;
 }
 
-void balltrack_readout() {
+// Readout the buffer and send it to the analysis thread
+void send_buffer_to_analysis(PixelBufferType buffertype) {
     int width = width2;
     int height = height2;
     uint8_t* buf = 0;
@@ -352,6 +388,7 @@ void balltrack_readout() {
 
     // Claim it
     buf = pixelbuffers[nextEmptyBuffer];
+    pixelbufferType[nextEmptyBuffer] = buffertype;
     ++nextEmptyBuffer;
     if (nextEmptyBuffer == PIXELBUFFER_COUNT)
         nextEmptyBuffer = 0;
@@ -433,14 +470,8 @@ int render_pass(SHADER_PROGRAM_T* shader, Texture source, Texture target) {
     return 0;
 }
 
-int frameNumber = 0;
-int fieldUpdateSteps = 0;
-
-FIELD field;
-
 int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint srctype)
 {
-    ++frameNumber;
     // Width,height is the size of the preview window on screen
     Texture screen;
     screen.id = 0;
@@ -454,6 +485,8 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
     input.type = srctype;
 
 #ifdef DO_FRAMEDUMP
+    static int frameNumber = 0;
+    ++frameNumber;
     if (frameNumber == 60) {
         render_pass(&shader_simple, input, screen);
         dump_frame(width, height, "framedump.tga");
@@ -471,28 +504,24 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
     render_pass(&shader_simple, input, rtt_copytex);
 #endif
 
+    // Every X steps, we update the field
+    static int fieldUpdateSteps = 0;
     if (fieldUpdateSteps == 0) {
         // Update the size of the green field bounding box
         render_pass(&shader_huefilter_field, input, field_tex1);
         render_pass(&shader_downsample, field_tex1, field_tex2);
-
-        // We could do this in a separate thread,
-        // but since its not every frame, we dont bother
-        GLCHK(glReadPixels(0, 0, width2, height2, GL_RGBA, GL_UNSIGNED_BYTE, fieldbuffer));
-        balltrack_process_field_buffer(fieldbuffer);
+        send_buffer_to_analysis(BUFFERTYPE_FIELD);
 
         fieldUpdateSteps = FieldUpdateDelay;
     }
     --fieldUpdateSteps;
 
-    // First pass: hue filter into smaller texture
+    // Now search for the ball
     render_pass(&shader_huefilter_ball, input, ball_tex1);
-    // Second pass: 8X smaller in both directions
     render_pass(&shader_downsample, ball_tex1, ball_tex2);
-    // Readout result
-    balltrack_readout();
+    send_buffer_to_analysis(BUFFERTYPE_BALL);
 
-    // Last pass: render to screen
+    // Last render pass: render to screen
 #ifdef DEBUG_TEXTURES
     GLCHK(glActiveTexture(GL_TEXTURE1));
     GLCHK(glBindTexture(GL_TEXTURE_2D, ball_tex1.id));
@@ -530,127 +559,8 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
 
     // Draw field and ball positions on top
     // TODO: This is currently quite slow
-    analysis_draw(field);
+    analysis_draw();
 
     return 0;
-}
-
-// This runs in a separate thread
-void balltrack_process_ball_buffer(uint8_t* pixelbuffer) {
-    // It packs four pixels into one RGBA pixel
-    // Since ARM is little-endian, this becomes very simple
-    // and we can simply threat it as an uint8 buffer of four times the width
-    int width = 4 * width2;
-    int height = height2;
-
-    int fieldxmin = (int)(0.5f * (1.0f + field.xmin) * (float)width - 1.0f);
-    int fieldxmax = (int)(0.5f * (1.0f + field.xmax) * (float)width + 1.0f);
-    int fieldymin = (int)(0.5f * (1.0f + field.ymin) * (float)height - 1.0f);
-    int fieldymax = (int)(0.5f * (1.0f + field.ymax) * (float)height + 1.0f);
-
-    // TODO: BLUR ?
-
-    // Find the max orange intensity
-    int maxx = 0, maxy = 0;
-    uint32_t maxValue = 0;
-    uint8_t* ptr = pixelbuffer;
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            uint32_t value = (uint32_t) *ptr++;
-
-            if ( y < fieldymin || y > fieldymax ) continue;
-            if ( x < fieldxmin || x > fieldxmax ) continue;
-            if (value > maxValue) {
-                maxx = x;
-                maxy = y;
-                maxValue = value;
-            }
-        }
-    }
-
-    // Take weighted average near the maximum
-    int avgx = 0, avgy = 0;
-    int weight = 0;
-    ptr = pixelbuffer;
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            uint32_t value = (uint32_t) *ptr++;
-            if (y < maxy - 5 || y > maxy + 5) continue;
-            if (x < maxx - 5 || x > maxx + 5) continue;
-            avgx += x * value;
-            avgy += y * value;
-            weight += value;
-        }
-    }
-
-    // avgx, avgy are the bottom-left corner of the macropixels
-    // Shift them by half a pixel to fix
-    float x = 0.5f + (((float)avgx) / ((float)weight));
-    float y = 0.5f + (((float)avgy) / ((float)weight));
-
-    int threshold1 = 30;
-    int threshold2 = 60;
-
-    // Map to [-1,1] range
-    POINT ball;
-    ball.x = (2.0f * x) / ((float)width) - 1.0f;
-    ball.y = (2.0f * y) / ((float)height) - 1.0f;
-    // Map to field coordinates
-    ball.x = -1.0f + 2.0f * (ball.x - field.xmin) / (field.xmax - field.xmin);
-    ball.y = -1.0f + 2.0f * (ball.y - field.ymin) / (field.ymax - field.ymin);
-
-    bool ballFound = maxValue > threshold1 && weight > threshold2;
-    analysis_update(frameNumber, field, ball, ballFound);
-}
-
-// This runs in a separate thread
-void balltrack_process_field_buffer(uint8_t* pixelbuffer) {
-    // It packs four pixels into one RGBA pixel
-    // Since ARM is little-endian, this becomes very simple
-    // and we can simply threat it as an uint8 buffer of four times the width
-    int width = 4 * width2;
-    int height = height2;
-
-    // Start with a small bounding box in the middle and stretch it out
-    int fieldxmin = (int)(0.48f * width);
-    int fieldxmax = (int)(0.52f * width);
-    int fieldymin = (int)(0.48f * height);
-    int fieldymax = (int)(0.52f * height);
-
-    uint8_t* ptr = pixelbuffer;
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            uint32_t value = (uint32_t) *ptr++;
-
-            if (value > 200) {
-                if (x < fieldxmin) fieldxmin = x;
-                if (x > fieldxmax) fieldxmax = x;
-                if (y < fieldymin) fieldymin = y;
-                if (y > fieldymax) fieldymax = y;
-            }
-        }
-    }
-
-    fieldxmin -= 4;
-    fieldxmax += 4;
-    fieldymin -= 3;
-    fieldymax += 3;
-    if (fieldxmin < 0) fieldxmin = 0;
-    if (fieldymin < 0) fieldymin = 0;
-    if (fieldxmax >= width) fieldxmax = width - 1;
-    if (fieldymax >= height) fieldymax = height - 1;
-
-    // Map to [-1,1]
-    FIELD newField;
-    newField.xmin = (2.0f * fieldxmin) / ((float)width) - 1.0f;
-    newField.xmax = (2.0f * fieldxmax) / ((float)width) - 1.0f;
-    newField.ymin = (2.0f * fieldymin) / ((float)height) - 1.0f;
-    newField.ymax = (2.0f * fieldymax) / ((float)height) - 1.0f;
-
-    // Time average for field, because it fluctuates too much
-    field.xmin = 0.92f * field.xmin + 0.08 * newField.xmin;
-    field.xmax = 0.92f * field.xmax + 0.08 * newField.xmax;
-    field.ymin = 0.92f * field.ymin + 0.08 * newField.ymin;
-    field.ymax = 0.92f * field.ymax + 0.08 * newField.ymax;
 }
 

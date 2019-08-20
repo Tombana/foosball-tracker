@@ -26,6 +26,11 @@ int ballCur = 0;
 
 int ballMissing = 1000;
 
+
+FIELD field;
+int frameNumber;
+
+
 int analysis_send_to_server(const char* str) {
     int fd = open("/tmp/foos-debug.in", O_WRONLY | O_NONBLOCK);
     if (fd > 0) {
@@ -122,7 +127,7 @@ int getPlayerWhoScored(int team) {
     return 0;
 }
 
-int analysis_update(int frameNumber, FIELD field, POINT ball, bool ballFound) {
+int analysis_update(POINT ball, bool ballFound) {
     ++frameNumber;
 
     static int sendSAVE = 0;
@@ -184,7 +189,7 @@ int analysis_update(int frameNumber, FIELD field, POINT ball, bool ballFound) {
             int goal = isInGoal(balls[prevIdx]);
             if (goal) {
                 sendSAVE = 0; // Dont send a potential SAVE
-                if (frameNumber - lastGOAL >= 50) { // Check if the last goal was at least 50 frames ago
+                if (frameNumber - lastGOAL >= 60) { // Check if the last goal was at least 60 frames ago
                     lastGOAL = frameNumber;
                     if (goal == 1) {
                         printf("Goal for red!\n");
@@ -215,7 +220,7 @@ void draw_line_strip(POINT* xys, int count, uint32_t color);
 // whereas the update function is called from a separate thread
 // The `field` and `ballsScreen` are not yet properly protected
 // from threading issues
-int analysis_draw(FIELD field) {
+int analysis_draw() {
     // Draw green bounding box
     draw_square(field.xmin, field.xmax, field.ymin, field.ymax, 0xff00ff00);
     float yAvg = 0.5f * (field.ymin + field.ymax);
@@ -245,3 +250,113 @@ int analysis_draw(FIELD field) {
     return 1;
 }
 
+// This runs in thread separate from the GL thread
+int analysis_process_ball_buffer(uint8_t* pixelbuffer, int width, int height) {
+    int fieldxmin = (int)(0.5f * (1.0f + field.xmin) * (float)width - 1.0f);
+    int fieldxmax = (int)(0.5f * (1.0f + field.xmax) * (float)width + 1.0f);
+    int fieldymin = (int)(0.5f * (1.0f + field.ymin) * (float)height - 1.0f);
+    int fieldymax = (int)(0.5f * (1.0f + field.ymax) * (float)height + 1.0f);
+
+    // TODO: BLUR ?
+
+    // Find the max orange intensity
+    int maxx = 0, maxy = 0;
+    uint32_t maxValue = 0;
+    uint8_t* ptr = pixelbuffer;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            uint32_t value = (uint32_t) *ptr++;
+
+            if ( y < fieldymin || y > fieldymax ) continue;
+            if ( x < fieldxmin || x > fieldxmax ) continue;
+            if (value > maxValue) {
+                maxx = x;
+                maxy = y;
+                maxValue = value;
+            }
+        }
+    }
+
+    // Take weighted average near the maximum
+    int avgx = 0, avgy = 0;
+    int weight = 0;
+    ptr = pixelbuffer;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            uint32_t value = (uint32_t) *ptr++;
+            if (y < maxy - 5 || y > maxy + 5) continue;
+            if (x < maxx - 5 || x > maxx + 5) continue;
+            avgx += x * value;
+            avgy += y * value;
+            weight += value;
+        }
+    }
+
+    // avgx, avgy are the bottom-left corner of the macropixels
+    // Shift them by half a pixel to fix
+    float x = 0.5f + (((float)avgx) / ((float)weight));
+    float y = 0.5f + (((float)avgy) / ((float)weight));
+
+    int threshold1 = 30;
+    int threshold2 = 60;
+
+    // Map to [-1,1] range
+    POINT ball;
+    ball.x = (2.0f * x) / ((float)width) - 1.0f;
+    ball.y = (2.0f * y) / ((float)height) - 1.0f;
+    // Map to field coordinates
+    ball.x = -1.0f + 2.0f * (ball.x - field.xmin) / (field.xmax - field.xmin);
+    ball.y = -1.0f + 2.0f * (ball.y - field.ymin) / (field.ymax - field.ymin);
+
+    bool ballFound = maxValue > threshold1 && weight > threshold2;
+    analysis_update(ball, ballFound);
+
+    return 0;
+}
+
+// This runs in thread separate from the GL thread
+int analysis_process_field_buffer(uint8_t* pixelbuffer, int width, int height) {
+    // Start with a small bounding box in the middle and stretch it out
+    int fieldxmin = (int)(0.48f * width);
+    int fieldxmax = (int)(0.52f * width);
+    int fieldymin = (int)(0.48f * height);
+    int fieldymax = (int)(0.52f * height);
+
+    uint8_t* ptr = pixelbuffer;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            uint32_t value = (uint32_t) *ptr++;
+
+            if (value > 200) {
+                if (x < fieldxmin) fieldxmin = x;
+                if (x > fieldxmax) fieldxmax = x;
+                if (y < fieldymin) fieldymin = y;
+                if (y > fieldymax) fieldymax = y;
+            }
+        }
+    }
+
+    fieldxmin -= 4;
+    fieldxmax += 4;
+    fieldymin -= 3;
+    fieldymax += 3;
+    if (fieldxmin < 0) fieldxmin = 0;
+    if (fieldymin < 0) fieldymin = 0;
+    if (fieldxmax >= width) fieldxmax = width - 1;
+    if (fieldymax >= height) fieldymax = height - 1;
+
+    // Map to [-1,1]
+    FIELD newField;
+    newField.xmin = (2.0f * fieldxmin) / ((float)width) - 1.0f;
+    newField.xmax = (2.0f * fieldxmax) / ((float)width) - 1.0f;
+    newField.ymin = (2.0f * fieldymin) / ((float)height) - 1.0f;
+    newField.ymax = (2.0f * fieldymax) / ((float)height) - 1.0f;
+
+    // Time average for field, because it fluctuates too much
+    field.xmin = 0.92f * field.xmin + 0.08 * newField.xmin;
+    field.xmax = 0.92f * field.xmax + 0.08 * newField.xmax;
+    field.ymin = 0.92f * field.ymin + 0.08 * newField.ymin;
+    field.ymax = 0.92f * field.ymax + 0.08 * newField.ymax;
+
+    return 0;
+}
