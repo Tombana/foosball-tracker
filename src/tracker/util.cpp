@@ -156,6 +156,47 @@ Texture createFilterTexture(int w, int h, GLint scaling) {
     return tex;
 }
 
+SharedMemTexture createSharedMemTexture(int w, int h, GLint scaling) {
+    SharedMemTexture tex;
+    // Width and height must be a power of two between 64 and 2048
+    // So find the smallest pot that is at least w,h
+    tex.type = GL_TEXTURE_2D;
+    tex.width = w;
+    tex.height = h;
+    tex.potWidth = 0;
+    tex.potHeight = 0;
+    //for (int pot = 64; pot <= 2048; pot *= 2) {
+    //    if (pot >= w && tex.potWidth == 0)
+    //        tex.potWidth = pot;
+    //    if (pot >= h && tex.potHeight == 0)
+    //        tex.potHeight = pot;
+    //}
+    tex.potWidth = 1024;
+    tex.potHeight = 1024;
+
+    GLCHK(glGenTextures(1, &tex.id));
+    glBindTexture(GL_TEXTURE_2D, tex.id);
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, scaling));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, scaling));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+
+    tex.vcsm_info.width = tex.potWidth;
+    tex.vcsm_info.height = tex.potHeight;
+    tex.eglImage =
+        eglCreateImageKHR(eglGetDisplay(EGL_DEFAULT_DISPLAY), EGL_NO_CONTEXT,
+                          EGL_IMAGE_BRCM_VCSM, &tex.vcsm_info, NULL);
+    if (tex.eglImage == EGL_NO_IMAGE_KHR || tex.vcsm_info.vcsm_handle == 0) {
+        printf("Failed to create EGL VCSM image\n");
+        GLCHK(glDeleteTextures(1, &tex.id));
+        tex.id = 0;
+        return tex;
+    }
+
+    GLCHK(glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, tex.eglImage));
+    return tex;
+}
+
 void brga_to_rgba(uint8_t *buffer, size_t size)
 {
    uint8_t* out = buffer;

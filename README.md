@@ -66,6 +66,11 @@ Use the `buildme` script to build.
 
 ## Running
 
+The program needs to access `/dev/vcsm` (VideoCore Shared Memory) which by default requires root permissions.
+However, by placing `vcsm_udev.rules` in `/etc/udev/rules.d`, every user gets permissions to `/dev/vcsm`, and this way we do not need to run the tracking software using sudo.
+
+    sudo cp vcsm_udev.rules /etc/udev/rules.d/vcsm_udev.rules
+
 To run without recording
 
     build/raspiballs -w 1280 -h 720 -fps 40 -t 0 -g 10 --ev 5 --glwin 450,700,640,480

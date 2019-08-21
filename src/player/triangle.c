@@ -188,7 +188,6 @@ static void init_ogl(STATE_T *state)
 
    //glMatrixMode(GL_MODELVIEW);
 
-   printf("Initializing balltracking shaders.\n");
    balltrack_core_init(0, 1);
 
    printf("OpenGL initialized.\n");

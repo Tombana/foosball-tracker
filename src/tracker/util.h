@@ -6,6 +6,7 @@
 #include <GLES2/gl2.h>
 #include <GLES/gl.h>
 #include <GLES/glext.h>
+// This is already included by eglext.h
 //#include "interface/khronos/include/EGL/eglext_brcm.h"
 
 #include <stdio.h>
@@ -29,6 +30,13 @@ struct Texture {
     int width;
     int height;
     GLuint type; // Always GL_TEXTURE_2D, except for camera input which is GL_TEXTURE_EXTERNAL_OES
+};
+
+struct SharedMemTexture : public Texture {
+    int potWidth; // power-of-two width
+    int potHeight; // power-of-two height
+    egl_image_brcm_vcsm_info vcsm_info;
+    EGLImageKHR eglImage;
 };
 
 class ShaderUniform {
@@ -77,6 +85,7 @@ int balltrack_build_shader_program(SHADER_PROGRAM_T *p);
 int balltrack_delete_shader(SHADER_PROGRAM_T *p);
 
 Texture createFilterTexture(int w, int h, GLint scaling);
+SharedMemTexture createSharedMemTexture(int w, int h, GLint scaling);
 
 int dump_frame(int width, int height, const char* filename);
 

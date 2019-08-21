@@ -3,8 +3,8 @@ project(foosballtracker)
 
 
 # Comment this out for a release build
-add_definitions(-DCHECK_GL_ERRORS) # Call glGetError after *every* GL call
-add_definitions(-DDEBUG_TEXTURES) # Use debug shader to show intermediate phases on screen
+#add_definitions(-DCHECK_GL_ERRORS) # Call glGetError after *every* GL call
+#add_definitions(-DDEBUG_TEXTURES) # Use debug shader to show intermediate phases on screen
 
 
 
@@ -104,7 +104,8 @@ set (RECORDER_LIBS
     mmal_core
     mmal_util
     mmal_vc_client
-    vcos
+    vcos # Threading and semaphores
+    vcsm # VideoCore shared memory textures
     bcm_host
     brcmGLESv2
     brcmEGL
@@ -118,6 +119,7 @@ set (PLAYER_LIBS
     openmaxil
     bcm_host
     vcos
+    vcsm
     vchiq_arm
     brcmGLESv2
     brcmEGL
