@@ -38,7 +38,7 @@ const int width2  = 80 / 4;
 const int height2 = 45;
 
 
-#define USE_VCSM
+//#define USE_VCSM
 
 Texture ball_tex1;
 Texture field_tex1;
@@ -186,9 +186,8 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
     // This should be twice as fast, however, it requires sudo
     // in order to access `/dev/vcsm` 
     if (vcsm_init()) {
-        printf("ERROR: Could not initialize videocore shared memory.\n");
-        printf("       This requires sudo rights, to access /dev/vcsm\n");
-        printf("       Read the README for non-sudo ways to access /dev/vcsm\n");
+        printf("ERROR: Could not access /dev/vcsm (VideoCore Shared Memory).\n");
+        printf("       Use sudo or read the README for better ways to access /dev/vcsm.\n");
         return -1;
     }
 
@@ -435,21 +434,33 @@ void send_buffer_to_analysis(PixelBufferType buffertype) {
     if (nextEmptyBuffer == PIXELBUFFER_COUNT)
         nextEmptyBuffer = 0;
 
-    GLCHK(glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buf));
+#ifdef USE_VCSM
+    SharedMemTexture& tex = (buffertype == BUFFERTYPE_BALL ? ball_tex2 : field_tex2);
 
-//    GLCHK(glFinish());
-//    // Make the buffer CPU addressable with host cache enabled
-//    vcsm_buffer = (unsigned char *) vcsm_lock_cache(vcsm_info.vcsm_handle, VCSM_CACHE_TYPE_HOST, &cache_type);
-//    if (! vcsm_buffer) {
-//        vcos_log_error("Failed to lock VCSM buffer for handle %d\n", vcsm_info.vcsm_handle);
-//        return -1;
-//    }
-//    vcos_log_trace("Locked vcsm handle %d at %p\n", vcsm_info.vcsm_handle, vcsm_buffer);
-//
-//    vcsm_square_draw_pattern(vcsm_buffer);
-//
-//    // Release the locked texture memory to flush the CPU cache and allow GPU to use it
-//    vcsm_unlock_ptr(vcsm_buffer);
+    GLCHK(glFinish());
+    // Make the buffer CPU addressable with host cache enabled
+    VCSM_CACHE_TYPE_T cache_type;
+    uint8_t* vcsm_buffer = (uint8_t*)vcsm_lock_cache(tex.vcsm_info.vcsm_handle, VCSM_CACHE_TYPE_HOST, &cache_type);
+    if (!vcsm_buffer) {
+        printf("ERROR: Failed to lock VCSM buffer.\n");
+    } else {
+        // Copy it into the available buffer
+        // vcsm_buffer has size tex.potWidth x tex.potHeight
+        // so we have to take that into account
+        uint8_t* src = vcsm_buffer;
+        uint8_t* dst = buf;
+        for (int y = 0; y < tex.height; ++y) {
+            memcpy(dst, src, 4 * tex.width);
+            src += 4 * tex.potWidth;
+            dst += 4 * tex.width;
+        }
+
+        // Release the locked texture memory to flush the CPU cache and allow GPU to use it
+        vcsm_unlock_ptr(vcsm_buffer);
+    }
+#else
+    GLCHK(glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buf));
+#endif
 
     // Notify analysis thread
     vcos_semaphore_post(&semFullCount);

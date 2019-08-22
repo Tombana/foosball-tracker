@@ -40,7 +40,7 @@ Other files:
 - `replay.sh` - Wrapper around `player`
 
 The python script `webproxy.py` acts as a proxy between the web interface (i.e. the javascript code) and the `raspiballs` program.
-It runs a websocket server, and the web interface is opened, the javascript code will try to connect to the websocket server.
+It runs a websocket server, and when the web interface is opened, the javascript code will try to connect to the websocket server.
 When the web interface requests tracking, `webproxy.py` will run `run-tracker.sh`.
 When a goal is scored, `raspiballs` writes some data to a FIFO file, which is read out by `webproxy.py` and sent to the web interface.
 When the web interface requests a replay, `webproxy.py` will run `generate-replay.sh` followed by `replay.sh`.
@@ -79,6 +79,10 @@ To record video (in fragments)
 
     mkdir -p "/dev/shm/replay/fragments"
     build/raspiballs -o /dev/shm/replay/fragments/out%04d.h264 -w 1280 -h 720 -fps 40 -t 0  -sg 100 -wr 100 -g 10 --ev 5 --glwin 450,700,640,480
+
+## Possible optimizations
+
+See `Optimizations.md` for possible optimizations that might improve the performance of `raspoballs`.
 
 ## Branching from newer userland repository
 

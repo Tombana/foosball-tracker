@@ -3,8 +3,8 @@ project(foosballtracker)
 
 
 # Comment this out for a release build
-#add_definitions(-DCHECK_GL_ERRORS) # Call glGetError after *every* GL call
-#add_definitions(-DDEBUG_TEXTURES) # Use debug shader to show intermediate phases on screen
+add_definitions(-DCHECK_GL_ERRORS) # Call glGetError after *every* GL call
+add_definitions(-DDEBUG_TEXTURES) # Use debug shader to show intermediate phases on screen
 
 
 
