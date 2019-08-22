@@ -84,7 +84,7 @@ typedef struct SHADER_PROGRAM_T
 int balltrack_build_shader_program(SHADER_PROGRAM_T *p);
 int balltrack_delete_shader(SHADER_PROGRAM_T *p);
 
-Texture createFilterTexture(int w, int h, GLint scaling);
+Texture createTexture(int w, int h, GLint scaling);
 SharedMemTexture createSharedMemTexture(int w, int h, GLint scaling);
 
 int dump_frame(int width, int height, const char* filename);

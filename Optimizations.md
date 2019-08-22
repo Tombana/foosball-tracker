@@ -35,16 +35,23 @@ For GLRP, we use a normal (gpu-based) texture, and then use glReadPixels to get 
 
 Comparing the performance of VCSM with GLRP.
 
+These benchmarks are *without* the idea of alternating between two textures as described in the Flushing section above.
+
 The size of the texture in question is
 20 (width) x 45 (height) RGBA pixels, which represents an 80x45 normal image.
 Since VCSM requires power-of-two sizes between 64 and 2048, it is a 64 x 64 texture of which we only use the 20x45 part.
 
-- GLRP: 44 FPS
 - VCSM: 39 FPS
+- GLRP: 44 FPS
 - Writing to VCSM-type texture but not reading it: 46 FPS
 - Writing to GLRP-type texture but not reading it: 48 FPS
 
-So even though VCSM might be faster in theory, just writing to these type of textures seems to be slower already.
+Using textures twice as large (also in the first rendering phase):
 
-This benchmark is *without* the idea of alternating between two textures as described in the Flushing section above.
+- VCSM: 34 FPS
+- GLRP: 37.5 FPS
+- Writing to VCSM-type texture but not reading it: 44.5 FPS
+- Writing to GLRP-type texture but not reading it: 46.2 FPS
+
+So even though VCSM might be faster in theory, just writing to these type of textures seems to be slower already.
 

@@ -28,23 +28,38 @@ constexpr int FieldUpdateDelay = 10;
 // -- Source is 720p
 const int width0  = 1280;
 const int height0 = 720;
-// -- From source to phase 1: 2x2 sampler-average, then hue filter
-// -- 2x2 pixels to 1 pixel
+
+#define BIGTEX
+
+#ifdef BIGTEX
+// -- Phase 1: from source to tex1: hue filter on every pixel
+const int width1  = 1280 / 4; // RGBA can store 4 values at once
+const int height1 = 720;
+// -- Phase 2: from tex1 to tex2: average 8x8 pixels to 1 pixel
+const int width2  = 160 / 4;
+const int height2 = 90;
+#else
+// -- Phase 1: from source to tex1: 2x2 sampler-average, then hue filter
 const int width1  = 640 / 4; // RGBA can store 4 values at once
 const int height1 = 360;
-// -- From phase 1 to phase 2: average
-// -- 8x8 pixels to 1 pixel
+// -- Phase 2: from tex1 to tex2: average 8x8 pixels to 1 pixel
 const int width2  = 80 / 4;
 const int height2 = 45;
+#endif
 
 
-//#define USE_VCSM
+#define USE_VCSM
 
 Texture ball_tex1;
 Texture field_tex1;
 #ifdef USE_VCSM
-SharedMemTexture ball_tex2;
-SharedMemTexture field_tex2;
+// In the frame where we are writing to tex2[i], we read out tex2[1-i]
+// which was written in the previous frame and has now finished.
+// This way we do not have to call glFinish.
+int curBallTex = 0;
+int curFieldTex = 0;
+SharedMemTexture ball_tex2[2];
+SharedMemTexture field_tex2[2];
 #else
 Texture ball_tex2;
 Texture field_tex2;
@@ -287,18 +302,20 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
     GLCHK(glBindFramebufferOES(GL_FRAMEBUFFER_OES, 0)); // unbind it
 
     printf("Creating render-to-texture targets\n");
-    ball_tex1 = createFilterTexture(width1, height1, GL_LINEAR);
-    field_tex1 = createFilterTexture(width1, height1, GL_LINEAR);
+    ball_tex1 = createTexture(width1, height1, GL_LINEAR);
+    field_tex1 = createTexture(width1, height1, GL_LINEAR);
 #ifdef USE_VCSM
-    ball_tex2 = createSharedMemTexture(width2, height2, GL_LINEAR);
-    field_tex2 = createSharedMemTexture(width2, height2, GL_LINEAR);
+    ball_tex2[0] = createSharedMemTexture(width2, height2, GL_LINEAR);
+    ball_tex2[1] = createSharedMemTexture(width2, height2, GL_LINEAR);
+    field_tex2[0] = createSharedMemTexture(width2, height2, GL_LINEAR);
+    field_tex2[1] = createSharedMemTexture(width2, height2, GL_LINEAR);
 #else
-    ball_tex2 = createFilterTexture(width2, height2, GL_LINEAR);
-    field_tex2 = createFilterTexture(width2, height2, GL_LINEAR);
+    ball_tex2 = createTexture(width2, height2, GL_LINEAR);
+    field_tex2 = createTexture(width2, height2, GL_LINEAR);
 #endif
 
 #ifdef DO_DIFF
-    rtt_copytex = createFilterTexture(width0, height0, GL_NEAREST);
+    rtt_copytex = createTexture(width0, height0, GL_NEAREST);
 #endif
 
     printf("Creating vertex-buffer object\n");
@@ -371,17 +388,27 @@ void balltrack_core_term()
     GLCHK(glBindFramebufferOES(GL_FRAMEBUFFER_OES, 0));
     GLCHK(glDeleteFramebuffersOES(1, &fbo));
 
+    GLCHK(glDeleteTextures(1, &ball_tex1.id));
+    GLCHK(glDeleteTextures(1, &field_tex1.id));
+
 #ifdef USE_VCSM
-    if (!eglDestroyImageKHR(eglGetDisplay(EGL_DEFAULT_DISPLAY), (EGLImageKHR)ball_tex2.eglImage))
+    if (!eglDestroyImageKHR(eglGetDisplay(EGL_DEFAULT_DISPLAY), (EGLImageKHR)ball_tex2[0].eglImage))
         printf("eglDestroyImageKHR failed (1).\n");
-    if (!eglDestroyImageKHR(eglGetDisplay(EGL_DEFAULT_DISPLAY), (EGLImageKHR)field_tex2.eglImage))
+    if (!eglDestroyImageKHR(eglGetDisplay(EGL_DEFAULT_DISPLAY), (EGLImageKHR)ball_tex2[1].eglImage))
         printf("eglDestroyImageKHR failed (2).\n");
+    if (!eglDestroyImageKHR(eglGetDisplay(EGL_DEFAULT_DISPLAY), (EGLImageKHR)field_tex2[0].eglImage))
+        printf("eglDestroyImageKHR failed (3).\n");
+    if (!eglDestroyImageKHR(eglGetDisplay(EGL_DEFAULT_DISPLAY), (EGLImageKHR)field_tex2[1].eglImage))
+        printf("eglDestroyImageKHR failed (4).\n");
+    GLCHK(glDeleteTextures(1, &ball_tex2[0].id));
+    GLCHK(glDeleteTextures(1, &ball_tex2[1].id));
+    GLCHK(glDeleteTextures(1, &field_tex2[0].id));
+    GLCHK(glDeleteTextures(1, &field_tex2[1].id));
+#else
+    GLCHK(glDeleteTextures(1, &ball_tex2.id));
+    GLCHK(glDeleteTextures(1, &field_tex2.id));
 #endif
 
-    GLCHK(glDeleteTextures(1, &ball_tex1.id));
-    GLCHK(glDeleteTextures(1, &ball_tex2.id));
-    GLCHK(glDeleteTextures(1, &field_tex1.id));
-    GLCHK(glDeleteTextures(1, &field_tex2.id));
 #ifdef DO_DIFF
     GLCHK(glDeleteTextures(1, &rtt_copytex.id));
 #endif
@@ -435,9 +462,11 @@ void send_buffer_to_analysis(PixelBufferType buffertype) {
         nextEmptyBuffer = 0;
 
 #ifdef USE_VCSM
-    SharedMemTexture& tex = (buffertype == BUFFERTYPE_BALL ? ball_tex2 : field_tex2);
+    SharedMemTexture& tex = (buffertype == BUFFERTYPE_BALL ? ball_tex2[curBallTex] : field_tex2[curFieldTex]);
 
-    GLCHK(glFinish());
+    // Not needed anymore, since we read the texture that was written in the previous frame
+    //GLCHK(glFinish());
+
     // Make the buffer CPU addressable with host cache enabled
     VCSM_CACHE_TYPE_T cache_type;
     uint8_t* vcsm_buffer = (uint8_t*)vcsm_lock_cache(tex.vcsm_info.vcsm_handle, VCSM_CACHE_TYPE_HOST, &cache_type);
@@ -577,19 +606,33 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
     // Every X steps, we update the field
     static int fieldUpdateSteps = 0;
     if (fieldUpdateSteps == 0) {
+#ifdef USE_VCSM
+        SharedMemTexture& write_tex = field_tex2[curFieldTex];
+        curFieldTex = 1 - curFieldTex;
+#else
+        Texture& write_tex = field_tex2;
+#endif
         // Update the size of the green field bounding box
         render_pass(&shader_huefilter_field, input, field_tex1);
-        render_pass(&shader_downsample, field_tex1, field_tex2);
+        render_pass(&shader_downsample, field_tex1, write_tex);
         send_buffer_to_analysis(BUFFERTYPE_FIELD);
 
         fieldUpdateSteps = FieldUpdateDelay;
     }
     --fieldUpdateSteps;
 
+    {
+#ifdef USE_VCSM
+    SharedMemTexture& write_tex = ball_tex2[curBallTex];
+    curBallTex = 1 - curBallTex;
+#else
+    Texture& write_tex = ball_tex2;
+#endif
     // Now search for the ball
     render_pass(&shader_huefilter_ball, input, ball_tex1);
-    render_pass(&shader_downsample, ball_tex1, ball_tex2);
+    render_pass(&shader_downsample, ball_tex1, write_tex);
     send_buffer_to_analysis(BUFFERTYPE_BALL);
+    }
 
     // Last render pass: render to screen
 #ifdef DEBUG_TEXTURES

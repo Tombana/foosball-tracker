@@ -140,7 +140,7 @@ int balltrack_delete_shader(SHADER_PROGRAM_T* p) {
 //      GL_LINEAR  interpolate between source pixels
 // @return The OpenGL texture id
 //
-Texture createFilterTexture(int w, int h, GLint scaling) {
+Texture createTexture(int w, int h, GLint scaling) {
     Texture tex;
     tex.width = w;
     tex.height = h;
