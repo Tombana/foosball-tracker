@@ -20,7 +20,7 @@ float goalHeight = 0.35f;
 
 
 // Ball history
-const int historyCount = 120;
+const int historyCount = 64;
 POINT balls[historyCount]; // in field coordinates
 int ballFrames[historyCount];
 POINT ballsScreen[historyCount]; // in screen coordinates
@@ -228,6 +228,19 @@ int analysis_draw() {
     // Draw `goals`
     draw_square(field.xmin, field.xmin + goalWidth, yAvg - goalHeight, yAvg + goalHeight, 0xff00ff00);
     draw_square(field.xmax - goalWidth, field.xmax, yAvg - goalHeight, yAvg + goalHeight, 0xff00ff00);
+
+    // Draw `player bar regions`
+
+    // (#bar - 1)/8 <= (x+1)/2 < #bar / 8
+    for (int bar = 1; bar < 8; ++bar) {
+        // These are still `field coordinates`
+        float barMin = ((float)(bar-1))/4.0f - 1.0f;
+        float barMax = ((float)bar)/4.0f - 1.0f;
+        // Go to real coordinates
+        barMin = (field.xmax - field.xmin) * 0.5f * (1.0f + barMin) + field.xmin;
+        barMax = (field.xmax - field.xmin) * 0.5f * (1.0f + barMax) + field.xmin;
+        draw_square( barMin, barMax, field.ymin, field.ymax, 0xff00d000);
+    }
 
     // Draw line for ball history
     // Be carefull with circular buffer
@@ -448,10 +461,10 @@ int analysis_process_field_buffer(uint8_t* pixelbuffer, int width, int height) {
     newField.ymax = (2.0f * fieldymax) / ((float)height) - 1.0f;
 
     // Time average for field, because it fluctuates too much
-    field.xmin = 0.70f * field.xmin + 0.30 * newField.xmin;
-    field.xmax = 0.70f * field.xmax + 0.30 * newField.xmax;
-    field.ymin = 0.70f * field.ymin + 0.30 * newField.ymin;
-    field.ymax = 0.70f * field.ymax + 0.30 * newField.ymax;
+    field.xmin = 0.80f * field.xmin + 0.20 * newField.xmin;
+    field.xmax = 0.80f * field.xmax + 0.20 * newField.xmax;
+    field.ymin = 0.80f * field.ymin + 0.20 * newField.ymin;
+    field.ymax = 0.80f * field.ymax + 0.20 * newField.ymax;
 
     return 0;
 }
