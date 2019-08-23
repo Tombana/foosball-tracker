@@ -18,6 +18,9 @@ constexpr int FieldUpdateDelay = 20;
 // Whether to use bigger (more finegrained, but slower) textures
 #define BIGTEX
 
+// Debug feature, debugs a few frames to tga files.
+//#define DO_FRAMEDUMPS
+
 // Divisions by 2 of 720p with correct aspect ratio
 // 1280,720
 //  640,360
@@ -81,6 +84,9 @@ ReadoutTexture* texDownscaledField;
 Texture* rtt_copytex;
 #endif
 
+#ifdef DO_FRAMEDUMPS
+Texture* texFramedump;
+#endif
 
 enum PixelBufferType { BUFFERTYPE_BALL = 0, BUFFERTYPE_FIELD = 1 };
 
@@ -312,6 +318,9 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
 
 #ifdef DO_DIFF
     rtt_copytex = new Texture(width0, height0, GL_NEAREST);
+#endif
+#ifdef DO_FRAMEDUMPS
+    texFramedump = new Texture(width0, height0, GL_NEAREST);
 #endif
 
     printf("Creating vertex-buffer object\n");
@@ -566,11 +575,13 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
     auto input = TextureWrapper(srctex, 0, 0, srctype);
     auto screen = TextureWrapper(0, width, height, 0);
 
-#ifdef DO_FRAMEDUMP
-    if (frameNumber == 60) {
-        render_pass(&shader_simple, &input, &screen);
-        dump_frame(width, height, "framedump.tga");
-        printf("Frame dumped to framedump.tga\n");
+#ifdef DO_FRAMEDUMPS
+    if (frameNumber == 50 || frameNumber == 60 || frameNumber == 70) {
+        render_pass(&shader_simple, &input, texFramedump);
+        char filename[128];
+        sprintf(filename, "framedump_%d.tga", frameNumber);
+        dump_frame(texFramedump->width, texFramedump->height, filename);
+        printf("Frame dumped to %s\n", filename);
     }
 #endif
 
