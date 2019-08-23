@@ -2,11 +2,13 @@ cmake_minimum_required(VERSION 3.1)
 project(foosballtracker)
 
 
-# Comment this out for a release build
-add_definitions(-DCHECK_GL_ERRORS) # Call glGetError after *every* GL call
-add_definitions(-DDEBUG_TEXTURES) # Use debug shader to show intermediate phases on screen
+# Enable these definitions for a debug build.
+# Comment them out for a release build
+#add_definitions(-DCHECK_GL_ERRORS) # Call glGetError after *every* GL call
+#add_definitions(-DDEBUG_TEXTURES) # Use debug shader to show intermediate phases on screen
 
-
+# Use the faster VideoCore Shared Memory method
+add_definitions(-DUSE_VCSM)
 
 #
 # In case you want to get the libs and headers directly from the `userland` repository

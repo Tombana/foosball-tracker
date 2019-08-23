@@ -11,18 +11,31 @@ To render to different textures, as we do, there are two options
 - Use a single FBO and *attach* a different texture every time
 - Have a separate FBO for each texture which always remains attached, and *bind* a different FBO every time
 
-Currently we use the first method.
+Currently we use the first method. I have not tested the second method yet.
 
 According to the internet, one method can be a lot faster or slower than the other but this depends very heavily on the hardware and driver.
 For embedded systems, like the Raspberry Pi, things are different than for desktop GPUs.
 For example, they say that the driver can store all of the rendering tasks in an FBO object but delay the actual work until later. When you then bind a different framebuffer, you force a flush and have to wait for the GPU to finish all the work instead of it being done in the background. Therefore binding a different FBO could be slower. *However*, in our case we want to read out the resulting texture, so we have to flush anyway. Maybe therefore doesnt matter in our case.
 We should benchmark which of these two options is faster (taking into account the next section on flushing).
 
-## Flushing OpenGL
+## Parallel textures and flushing OpenGL
 
 Reading out the result of a render-to-texture operation requires a flush of all the OpenGL GPU operations.
-It might therefore be better to have two (or even more) textures, and alternate between them.
-At the start of one frame, one can read out the result of the texture used in the previous frame. This way there is no time wasted waiting for the GPU.
+It can therefore be better to have two textures, and alternate between them.
+Instead of doing this in series:
+
+    source -> texture1
+              texture1 -> texture2
+                          texture2 -> readout
+
+We can do this in parallel
+
+    source    -> texture1a
+    texture1b -> texture2a
+    texture2b -> readout
+
+and swap a/b every frame, so that none of the three operations depends on another operation in that frame.
+I call this method *parallel textures*.
 
 ## VideoCore Shared Memory
 
@@ -31,27 +44,29 @@ Reading out textures can be done with either VCSM (VideoCore Shared Memory) or G
 For VCSM, we allocate a 'shared memory' texture that can be accessed by the both CPU and GPU. We have to call glFinish first to flush all GL operations.
 For GLRP, we use a normal (gpu-based) texture, and then use glReadPixels to get the result. Note that glReadPixels will flush GL internally.
 
-## VCSM simple benchmark
+## VCSM vs GLRP simple benchmark
 
 Comparing the performance of VCSM with GLRP.
 
-These benchmarks are *without* the idea of alternating between two textures as described in the Flushing section above.
-
-The size of the texture in question is
+Small texture:
 20 (width) x 45 (height) RGBA pixels, which represents an 80x45 normal image.
 Since VCSM requires power-of-two sizes between 64 and 2048, it is a 64 x 64 texture of which we only use the 20x45 part.
 
-- VCSM: 39 FPS
-- GLRP: 44 FPS
-- Writing to VCSM-type texture but not reading it: 46 FPS
-- Writing to GLRP-type texture but not reading it: 48 FPS
+Big texture:
+40 (width) x 90 (height) RGBA pixels, representing a 160x90 image
+The VCSM allocated texture is 64x128
 
-Using textures twice as large (also in the first rendering phase):
+|       Framerates       | Small texture | Big texture |
+|:----------------------:|:-------------:|:-----------:|
+| VCSM                   |            39 |          34 |
+| GLRP                   |            44 |        37.5 |
+| VCSM no readout        |            46 |        44.5 |
+| GLRP no readout        |            48 |        46.2 |
+| VCSM parallel textures |            46 |          45 |
+| GLRP parallel textures |            42 |          37 |
 
-- VCSM: 34 FPS
-- GLRP: 37.5 FPS
-- Writing to VCSM-type texture but not reading it: 44.5 FPS
-- Writing to GLRP-type texture but not reading it: 46.2 FPS
+**Observations**
 
-So even though VCSM might be faster in theory, just writing to these type of textures seems to be slower already.
+- The `no readout` results are without parallel textures. They write to the textures in series but do not readout the result to the CPU. This shows that writing without reading is faster to normal, non-VCSM textures.
+- For GLRP the parallel textures do not help at all. They do matter a lot for VCSM textures.
 

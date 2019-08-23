@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include <fstream>
 
 // To communicate with the Python websocket server
 // we use a named pipe (FIFO) stored at
@@ -33,7 +34,7 @@ int frameNumber;
 
 
 int analysis_send_to_server(const char* str) {
-    int fd = open("/tmp/foos-debug.in", O_WRONLY | O_NONBLOCK);
+    int fd = open("/tmp/foosballtrackerpipe.in", O_WRONLY | O_NONBLOCK);
     if (fd > 0) {
         write(fd, str, strlen(str));
         close(fd);
@@ -42,15 +43,15 @@ int analysis_send_to_server(const char* str) {
     return 0;
 }
 
-int timeseriesfile = 0;
+std::ofstream timeseriesfile;
 
 int analysis_init() {
 #ifdef GENERATE_TIMESERIES
-    timeseriesfile = open("/tmp/timeseries.txt", O_WRONLY);
-    if (!timeseriesfile) {
+    timeseriesfile.open("/tmp/timeseries.txt");
+    if (!timeseriesfile.is_open()) {
         printf("Unable to open /tmp/timeseries.txt\n");
     } else {
-        write(timeseriesfile, "(* framenumber, x, y *)\n", 24);
+        timeseriesfile << "(* framenumber, x, y *)" << std::endl;
     }
 #endif
     return 1;
@@ -145,7 +146,7 @@ int analysis_update(POINT ball, bool ballFound) {
 
     int prevIdx = (ballCur == 0 ? historyCount - 1 : ballCur - 1);
     if (ballFound) {
-        if (ballMissing >= 30) {
+        if (ballMissing >= 30 && ballMissing != 1000) {
             printf("Ball was gone for %d frames.\n", ballMissing);
         }
         ballMissing = 0;
@@ -177,11 +178,9 @@ int analysis_update(POINT ball, bool ballFound) {
         if(ballCur >= historyCount) {
             ballCur = 0;
 
-            if (timeseriesfile) {
-                char buffer[128];
+            if (timeseriesfile.is_open()) {
                 for (int i = 0; i < historyCount; ++i) {
-                    int len = sprintf(buffer, "{%d, %f, %f},\n", ballFrames[i], balls[i].x, balls[i].y);
-                    write(timeseriesfile, buffer, len);
+                    timeseriesfile << '{' << ballFrames[i] << ',' << balls[i].x << ',' << balls[i].y << '}' << std::endl;
                 }
             }
         }
@@ -298,8 +297,9 @@ int analysis_process_ball_buffer(uint8_t* pixelbuffer, int width, int height) {
     float x = 0.5f + (((float)avgx) / ((float)weight));
     float y = 0.5f + (((float)avgy) / ((float)weight));
 
-    int threshold1 = 30;
-    int threshold2 = 60;
+    int threshold1 = 30;  // The max pixel should be at least this
+    int threshold2 = 150; // The total in the neighborhood should be at least this
+    bool ballFound = maxValue > threshold1 && weight > threshold2;
 
     // Map to [-1,1] range
     POINT ball;
@@ -309,9 +309,7 @@ int analysis_process_ball_buffer(uint8_t* pixelbuffer, int width, int height) {
     ball.x = -1.0f + 2.0f * (ball.x - field.xmin) / (field.xmax - field.xmin);
     ball.y = -1.0f + 2.0f * (ball.y - field.ymin) / (field.ymax - field.ymin);
 
-    bool ballFound = maxValue > threshold1 && weight > threshold2;
     analysis_update(ball, ballFound);
-
     return 0;
 }
 
@@ -450,10 +448,10 @@ int analysis_process_field_buffer(uint8_t* pixelbuffer, int width, int height) {
     newField.ymax = (2.0f * fieldymax) / ((float)height) - 1.0f;
 
     // Time average for field, because it fluctuates too much
-    field.xmin = 0.80f * field.xmin + 0.20 * newField.xmin;
-    field.xmax = 0.80f * field.xmax + 0.20 * newField.xmax;
-    field.ymin = 0.80f * field.ymin + 0.20 * newField.ymin;
-    field.ymax = 0.80f * field.ymax + 0.20 * newField.ymax;
+    field.xmin = 0.70f * field.xmin + 0.30 * newField.xmin;
+    field.xmax = 0.70f * field.xmax + 0.30 * newField.xmax;
+    field.ymin = 0.70f * field.ymin + 0.30 * newField.ymin;
+    field.ymax = 0.70f * field.ymax + 0.30 * newField.ymax;
 
     return 0;
 }

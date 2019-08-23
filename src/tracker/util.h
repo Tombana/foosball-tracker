@@ -8,8 +8,7 @@
 #include <GLES/glext.h>
 // This is already included by eglext.h
 //#include "interface/khronos/include/EGL/eglext_brcm.h"
-
-#include <stdio.h>
+#include <cstdio>
 
 #ifdef CHECK_GL_ERRORS
 #define GLCHK(X) \
@@ -23,21 +22,63 @@
 }
 #else
 #define GLCHK(X) X
-#endif /* CHECK_GL_ERRORS */
+#endif
 
-struct Texture {
+
+//
+// OpenGL texture that we can use for a render pass (render-to-texture)
+//
+// @param scaling How the texture is interpreted when it is a source texture
+//      GL_NEAREST no interpolation for scaling down and up.
+//      GL_LINEAR  interpolate between source pixels
+class Texture {
+  public:
+    Texture() : id(0) {};
+    Texture(int w, int h, GLint scaling = GL_NEAREST);
+    virtual ~Texture() {
+        if (id)
+            GLCHK(glDeleteTextures(1, &id));
+    };
+
     GLuint id;
     int width;
     int height;
-    GLuint type; // Always GL_TEXTURE_2D, except for camera input which is GL_TEXTURE_EXTERNAL_OES
+    GLuint type; // Always GL_TEXTURE_2D, except GL_TEXTURE_EXTERNAL_OES for cam
 };
 
-struct SharedMemTexture : public Texture {
-    int potWidth; // power-of-two width
+// Texture that does not delete in the deconstructor
+class TextureWrapper : public Texture {
+  public:
+    TextureWrapper(GLuint _id, int w, int h, GLuint _type) {
+        id = _id;
+        width = w;
+        height = h;
+        type = _type;
+    }
+    virtual ~TextureWrapper() { id = 0; } // avoid deletion
+};
+
+class SharedMemTexture : public Texture {
+  public:
+    SharedMemTexture() : Texture(), eglImage(EGL_NO_IMAGE_KHR) {};
+    SharedMemTexture(int w, int h);
+    virtual ~SharedMemTexture() {
+        if (eglImage != EGL_NO_IMAGE_KHR)
+            eglDestroyImageKHR(eglGetDisplay(EGL_DEFAULT_DISPLAY), (EGLImageKHR)eglImage);
+    }
+
+    int potWidth;  // power-of-two width
     int potHeight; // power-of-two height
     egl_image_brcm_vcsm_info vcsm_info;
     EGLImageKHR eglImage;
 };
+
+#ifdef USE_VCSM
+typedef SharedMemTexture ReadoutTexture;
+#else
+typedef Texture ReadoutTexture;
+#endif
+
 
 class ShaderUniform {
   public:
@@ -63,29 +104,29 @@ class ShaderUniform {
  * Container for a simple shader program. The uniform and attribute locations
  * are automatically setup by raspitex_build_shader_program.
  */
-typedef struct SHADER_PROGRAM_T
-{
-   const char *vertex_source;       /// Pointer to vertex shader source
-   const char *fragment_source;     /// Pointer to fragment shader source
+class ShaderProgram {
+  public:
+    const char* display_name;    // For debug messages
+    const char* vertex_source;   // Pointer to vertex shader source
+    const char* fragment_source; // Pointer to fragment shader source
 
-   /// Array of uniforms for raspitex_build_shader_program to process
-   ShaderUniform uniforms[16];
-   /// Array of attribute names for raspitex_build_shader_program to process
-   const char *attribute_names[16];
+    // Array of uniforms for raspitex_build_shader_program to process
+    ShaderUniform uniforms[16];
+    // Array of attribute names for raspitex_build_shader_program to process
+    const char* attribute_names[16];
 
-   GLint vs;                        /// Vertex shader handle
-   GLint fs;                        /// Fragment shader handle
-   GLint program;                   /// Shader program handle
+    // Assumes that all the above info is valid
+    int build();
 
-   /// The locations for attributes defined in attribute_names
-   GLint attribute_locations[16];
-} SHADER_PROGRAM_T;
+    GLint vs;      // Vertex shader handle
+    GLint fs;      // Fragment shader handle
+    GLint program; // Shader program handle
 
-int balltrack_build_shader_program(SHADER_PROGRAM_T *p);
-int balltrack_delete_shader(SHADER_PROGRAM_T *p);
+    // The locations for attributes defined in attribute_names
+    GLint attribute_locations[16];
+};
 
-Texture createTexture(int w, int h, GLint scaling);
-SharedMemTexture createSharedMemTexture(int w, int h, GLint scaling);
+void cleanupShaders();
 
 int dump_frame(int width, int height, const char* filename);
 

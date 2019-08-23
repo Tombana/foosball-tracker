@@ -42,7 +42,7 @@ static COMPONENT_T* egl_render = NULL;
 static void* eglImage = 0;
 
 char* filename = "/opt/vc/src/hello_pi/hello_video/test.h264";
-int fps = 30;
+int fps = 5;
 
 static void update_fps()
 {

@@ -1,93 +1,138 @@
 // Mostly taken from RaspiTexUtil
 #include "util.h"
 #include "tga.h"
-#include <stdio.h>
+#include <cstdio>
+#include <vector>
 
-/**
- * Takes a description of shader program, compiles it and gets the locations
- * of uniforms and attributes.
- *
- * @param p The shader program state.
- * @return Zero if successful.
- */
-int balltrack_build_shader_program(SHADER_PROGRAM_T *p)
+Texture::Texture(int w, int h, GLint scaling)
+    : width(w), height(h), type(GL_TEXTURE_2D) {
+    GLCHK(glGenTextures(1, &id));
+    GLCHK(glBindTexture(GL_TEXTURE_2D, id));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, scaling));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, scaling));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+    GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA,
+                       GL_UNSIGNED_BYTE, NULL));
+};
+
+SharedMemTexture::SharedMemTexture(int w, int h) : Texture() {
+    // Width and height must be a power of two between 64 and 2048
+    // So find the smallest pot that is at least w,h
+    type = GL_TEXTURE_2D;
+    width = w;
+    height = h;
+    potWidth = 0;
+    potHeight = 0;
+    for (int pot = 64; pot <= 2048; pot *= 2) {
+        if (pot >= w && potWidth == 0)
+            potWidth = pot;
+        if (pot >= h && potHeight == 0)
+            potHeight = pot;
+    }
+    vcsm_info.width = potWidth;
+    vcsm_info.height = potHeight;
+    eglImage =
+        eglCreateImageKHR(eglGetDisplay(EGL_DEFAULT_DISPLAY), EGL_NO_CONTEXT,
+                          EGL_IMAGE_BRCM_VCSM, &vcsm_info, NULL);
+    if (eglImage == EGL_NO_IMAGE_KHR || vcsm_info.vcsm_handle == 0) {
+        printf("ERROR: Failed to create EGL VCSM image\n");
+        return;
+    }
+
+    GLCHK(glGenTextures(1, &id));
+    GLCHK(glBindTexture(GL_TEXTURE_2D, id));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+
+    GLCHK(glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, eglImage));
+    return;
+}
+
+std::vector<ShaderProgram*> loadedShaders;
+
+int ShaderProgram::build()
 {
     GLint status;
     int i = 0;
     char log[1024];
     int logLen = 0;
 
-    if (! (p && p->vertex_source && p->fragment_source))
-        goto fail;
+    printf("Building shader `%s`\n", display_name);
 
-    p->vs = p->fs = 0;
+    if (! (vertex_source && fragment_source)) {
+        printf("No shader sources specified.\n");
+        return -1;
+    }
 
-    p->vs = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(p->vs, 1, &p->vertex_source, NULL);
-    glCompileShader(p->vs);
-    glGetShaderiv(p->vs, GL_COMPILE_STATUS, &status);
+    vs = fs = 0;
+
+    vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs, 1, &vertex_source, NULL);
+    glCompileShader(vs);
+    glGetShaderiv(vs, GL_COMPILE_STATUS, &status);
     if (! status) {
-        glGetShaderInfoLog(p->vs, sizeof(log), &logLen, log);
+        glGetShaderInfoLog(vs, sizeof(log), &logLen, log);
         printf("Program info log %s\n", log);
         goto fail;
     }
 
-    p->fs = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(p->fs, 1, &p->fragment_source, NULL);
-    glCompileShader(p->fs);
+    fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs, 1, &fragment_source, NULL);
+    glCompileShader(fs);
 
-    glGetShaderiv(p->fs, GL_COMPILE_STATUS, &status);
+    glGetShaderiv(fs, GL_COMPILE_STATUS, &status);
     if (! status) {
-        glGetShaderInfoLog(p->fs, sizeof(log), &logLen, log);
+        glGetShaderInfoLog(fs, sizeof(log), &logLen, log);
         printf("Program info log %s\n", log);
         goto fail;
     }
 
-    p->program = glCreateProgram();
-    glAttachShader(p->program, p->vs);
-    glAttachShader(p->program, p->fs);
-    glLinkProgram(p->program);
-    glGetProgramiv(p->program, GL_LINK_STATUS, &status);
+    program = glCreateProgram();
+    glAttachShader(program, vs);
+    glAttachShader(program, fs);
+    glLinkProgram(program);
+    glGetProgramiv(program, GL_LINK_STATUS, &status);
     if (! status)
     {
         printf("Failed to link shader program\n");
-        glGetProgramInfoLog(p->program, sizeof(log), &logLen, log);
+        glGetProgramInfoLog(program, sizeof(log), &logLen, log);
         printf("Program info log %s\n", log);
         goto fail;
     }
 
     for (i = 0; i < 16; ++i)
     {
-        if (! p->attribute_names[i])
+        if (! attribute_names[i])
             break;
-        p->attribute_locations[i] = glGetAttribLocation(p->program, p->attribute_names[i]);
-        if (p->attribute_locations[i] == -1)
+        attribute_locations[i] = glGetAttribLocation(program, attribute_names[i]);
+        if (attribute_locations[i] == -1)
         {
             printf("Failed to get location for attribute %s\n",
-                  p->attribute_names[i]);
+                  attribute_names[i]);
             goto fail;
         }
         else {
-            //printf("Attribute for %s is %d\n", p->attribute_names[i], p->attribute_locations[i]);
+            //printf("Attribute for %s is %d\n", attribute_names[i], attribute_locations[i]);
         }
     }
 
     for (i = 0; i < 16; ++i)
     {
-        ShaderUniform& u = p->uniforms[i];
+        ShaderUniform& u = uniforms[i];
         if (!u.name)
             break;
-        u.location = glGetUniformLocation(p->program, u.name);
+        u.location = glGetUniformLocation(program, u.name);
         if (u.location == -1) {
             printf("Failed to get location for uniform %s\n", u.name);
             u.type = ShaderUniform::UNIFORM_NOTYPE;
         }
     }
 
-    glUseProgram(p->program);
+    glUseProgram(program);
     for (i = 0; i < 16; ++i)
     {
-        ShaderUniform& u = p->uniforms[i];
+        ShaderUniform& u = uniforms[i];
         if (!u.name)
             break;
 
@@ -110,91 +155,25 @@ int balltrack_build_shader_program(SHADER_PROGRAM_T *p)
         };
     }
 
+    loadedShaders.push_back(this);
+
     return 0;
 
 fail:
     printf("Failed to build shader program\n");
-    if (p)
-    {
-        glDeleteProgram(p->program);
-        glDeleteShader(p->fs);
-        glDeleteShader(p->vs);
-    }
+    glDeleteProgram(program);
+    glDeleteShader(fs);
+    glDeleteShader(vs);
     return -1;
 }
 
-int balltrack_delete_shader(SHADER_PROGRAM_T* p) {
-    if (!p)
-        return 0;
-    GLCHK(glDeleteShader(p->fs));
-    GLCHK(glDeleteShader(p->vs));
-    GLCHK(glDeleteProgram(p->program));
-    return 0;
-}
-
-//
-// Creates an OpenGL texture that we can use for a render pass (render-to-texture)
-//
-// @param scaling How the texture is interpreted when it is a source texture
-//      GL_NEAREST no interpolation for scaling down and up.
-//      GL_LINEAR  interpolate between source pixels
-// @return The OpenGL texture id
-//
-Texture createTexture(int w, int h, GLint scaling) {
-    Texture tex;
-    tex.width = w;
-    tex.height = h;
-    tex.type = GL_TEXTURE_2D;
-    GLCHK(glGenTextures(1, &tex.id));
-    glBindTexture(GL_TEXTURE_2D, tex.id);
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, scaling));
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, scaling));
-    //Wrapping: clamp. Only use (s,t) as we are using a 2D texture
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
-    GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL));
-    return tex;
-}
-
-SharedMemTexture createSharedMemTexture(int w, int h, GLint scaling) {
-    SharedMemTexture tex;
-    // Width and height must be a power of two between 64 and 2048
-    // So find the smallest pot that is at least w,h
-    tex.type = GL_TEXTURE_2D;
-    tex.width = w;
-    tex.height = h;
-    tex.potWidth = 0;
-    tex.potHeight = 0;
-    //for (int pot = 64; pot <= 2048; pot *= 2) {
-    //    if (pot >= w && tex.potWidth == 0)
-    //        tex.potWidth = pot;
-    //    if (pot >= h && tex.potHeight == 0)
-    //        tex.potHeight = pot;
-    //}
-    tex.potWidth = 1024;
-    tex.potHeight = 1024;
-
-    GLCHK(glGenTextures(1, &tex.id));
-    glBindTexture(GL_TEXTURE_2D, tex.id);
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, scaling));
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, scaling));
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
-    GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
-
-    tex.vcsm_info.width = tex.potWidth;
-    tex.vcsm_info.height = tex.potHeight;
-    tex.eglImage =
-        eglCreateImageKHR(eglGetDisplay(EGL_DEFAULT_DISPLAY), EGL_NO_CONTEXT,
-                          EGL_IMAGE_BRCM_VCSM, &tex.vcsm_info, NULL);
-    if (tex.eglImage == EGL_NO_IMAGE_KHR || tex.vcsm_info.vcsm_handle == 0) {
-        printf("Failed to create EGL VCSM image\n");
-        GLCHK(glDeleteTextures(1, &tex.id));
-        tex.id = 0;
-        return tex;
+void cleanupShaders() {
+    for (auto& p : loadedShaders) {
+        GLCHK(glDeleteShader(p->fs));
+        GLCHK(glDeleteShader(p->vs));
+        GLCHK(glDeleteProgram(p->program));
     }
-
-    GLCHK(glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, tex.eglImage));
-    return tex;
+    loadedShaders.clear();
 }
 
 void brga_to_rgba(uint8_t *buffer, size_t size)

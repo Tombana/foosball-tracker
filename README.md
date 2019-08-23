@@ -80,7 +80,7 @@ To record video (in fragments)
     mkdir -p "/dev/shm/replay/fragments"
     build/raspiballs -o /dev/shm/replay/fragments/out%04d.h264 -w 1280 -h 720 -fps 40 -t 0  -sg 100 -wr 100 -g 10 --ev 5 --glwin 450,700,640,480
 
-## Possible optimizations
+## Benchmarks and possible optimizations
 
 See `Optimizations.md` for possible optimizations that might improve the performance of `raspoballs`.
 
