@@ -12,33 +12,15 @@
 // Input:   |--|--|
 // texcoord:|--*--|
 // samples: |--*--|
-
-// Ball hue lower bound is important to distinguish from red players
-// Ball sat lower bound is important to distinguish it from pure white
-//
-// These (Hue,Saturation,Value) tuples are all in range [0-360]x[0,100]x[0,100]
-// This is all from video. Not always the same as from camera.
-// Normal ball:             (16-20, 50-70, 70-80)
-// Fast blur ball in light: (?-60 , 15+  , 50+)
-// Ball in goal:            (17-30, 60-80, 30-50)
-// Ball in goal dark:       (16-24, 75-95, 14-21) low Value!
-// Ball on white corner:    ( 9-12, 65-85, 40-55)
-// Red player edges:        (?-15 , 50-70, 35-54)
-//                          (47   , 42   , 31)
-// Red player spinning:     ( 25  , 50   , 50)   :(
-//
-// For the replay video, seperating the Hue as  0.18 < neutral < 0.25 is fine.
-// For the camera, the bound has to be much lower. Like  0.06 < neutral < 0.14
-//
-// Yellow ball from video: (45-60, 50-70, 50-80)
-// Yellow ball from framedump: (50,53,84)
-// Yellow ball from framedump near dark goal: (48-53, 50-65, 22-37)
-//
-// Field: (125-175, 15-75, 13-70)
-// Rescaling table
-// Hue [0-360] : 4     6    7     8     9     10    11    12   14    15    16    17    18   45
-// Hue [0-6]   : 0.067 0.10 0.117 0.133 0.150 0.167 0.183 0.20 0.233 0.250 0.267 0.283 0.30 0.75
 #extension GL_OES_EGL_image_external : require
+
+//mat4 weights0 = mat4(
+//        -0.6283, 2.1687,-0.6527,-0.8721,  // column 1
+//        -0.6121, 3.9540,-2.5657,-2.5035,  // column 2
+//        -0.5640,-4.6584, 4.7184, 4.5599,  // column 3
+//        -0.0000,-0.5383, 1.3320, 1.2500); // last column (biases)
+//vec4 weights1 = vec4( 1.1078,33.6169,-8.0648,-8.7316);
+//float b0 = -2.9163;
 
 float getFilter(vec4 col) {
     // We use a piecewise definition for Hue.
@@ -62,6 +44,14 @@ float getFilter(vec4 col) {
         }
     }
     return ballfilter;
+    // two-layer neural network
+    //col[3] = 1.0; // bias (alpha) component
+    //// max is ReLu
+    //float neuron = b0 + dot(weights1, max(vec4(0.0), weights0 * col));
+    //if (neuron > 0.0)
+    //    return 1.0;
+    //else
+    //    return 0.0;
 }
 
 uniform samplerExternalOES tex;

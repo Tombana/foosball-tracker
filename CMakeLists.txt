@@ -5,9 +5,10 @@ project(foosballtracker)
 # Enable these definitions for a debug build.
 # Comment them out for a release build
 #add_definitions(-DCHECK_GL_ERRORS) # Call glGetError after *every* GL call
-#add_definitions(-DDEBUG_TEXTURES) # Use debug shader to show intermediate phases on screen
+#add_definitions(-DDEBUG_TEXTURES)  # Use debug shader to show intermediate phases on screen
 
-# Use the faster VideoCore Shared Memory method
+# Use the faster VideoCore Shared Memory method.
+# Do *not* use this together with DEBUG_TEXTURES
 add_definitions(-DUSE_VCSM)
 
 #
@@ -63,11 +64,11 @@ set (COMMON_SOURCES
 )
 
 set (SHADER_SOURCES
+    src/tracker/balltrackshaders/colorfilterball.frag
+    src/tracker/balltrackshaders/colorfilterfield.frag
     src/tracker/balltrackshaders/debug.frag
     src/tracker/balltrackshaders/downsample.frag
     src/tracker/balltrackshaders/fixedcolor.frag
-    src/tracker/balltrackshaders/huefilterball.frag
-    src/tracker/balltrackshaders/huefilterfield.frag
     src/tracker/balltrackshaders/simple.frag
     src/tracker/balltrackshaders/vshader.vert
 )
