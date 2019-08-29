@@ -31,7 +31,7 @@ int ballMissing = 1000;
 
 
 FIELD field;
-int frameNumber;
+int frameNumber = 0;
 
 
 // Ball speeds
@@ -56,7 +56,7 @@ int analysis_send_to_server(const char* str) {
 
 void sendMaxSpeed(float speed) {
     char buffer[64];
-    sprintf(buffer, "MAXSPEED %4.1f\n", speed);
+    sprintf(buffer, "MAXSPEED %.1f\n", speed);
     analysis_send_to_server(buffer);
     ballSpeedFramesSinceLastUpdate = 0;
 }
@@ -184,7 +184,7 @@ int analysis_update(POINT ball, bool ballFound) {
         // This point and previous points should be at most 2 frames apart
         POINT prevBall = balls[prevIdx];
         int frameDiffs = frameNumber - ballFrames[prevIdx];
-        if (frameDiffs <= 20) {
+        if (frameDiffs <= 10 && frameNumber > 100) {
             float ballDist = dist(prevBall, ball);
             float ballSpeed = ballDist * stableFPS / float(frameDiffs);
             // ballDist is in meters
@@ -204,10 +204,6 @@ int analysis_update(POINT ball, bool ballFound) {
             ++ballSpeedIndex;
             if (ballSpeedIndex == BallSpeedCount)
                 ballSpeedIndex = 0;
-
-            if (newMax && ballSpeedFramesSinceLastUpdate > 20) {
-                sendMaxSpeed(ballSpeed);
-            }
 
             if (ballSpeed > 50.0f ) {
                 if (ball.y > -goalHeight && ball.y < goalHeight && 
@@ -260,15 +256,20 @@ int analysis_update(POINT ball, bool ballFound) {
         }	
     }
 
-    if (ballSpeedFramesSinceLastUpdate > int(stableFPS)) {
+    if (frameNumber > 100 && ballSpeedFramesSinceLastUpdate > int(0.5f * stableFPS)) {
+        // Only look at the last 5 seconds
+        int numFrames = int(5.0f * stableFPS);
         float max = 0.0f;
-        for (int i = 0; i < BallSpeedCount; ++i) {
-            if (ballSpeeds[i] > max) {
-                max = ballSpeeds[i];
+        for (int i = ballSpeedIndex - numFrames; i < ballSpeedIndex; ++i) {
+            int idx = (i < 0 ? i + BallSpeedCount : i);
+            if (ballSpeeds[idx] > max) {
+                max = ballSpeeds[idx];
             }
         }
         sendMaxSpeed(max);
     }
+
+    ++ballSpeedFramesSinceLastUpdate;
 
     return 1;
 }

@@ -689,12 +689,12 @@ void update_render_fps() {
     gettimeofday(&te, NULL);
     long long time_now = te.tv_sec * 1000LL + te.tv_usec / 1000;
 
-    if (time_now - time_start > 5000) {
+    if (time_now - time_start > 3000) {
         float fps = (float)frame_count / ((time_now - time_start) / 1000.0);
         frame_count = 0;
         time_start = time_now;
         // Take moving average for more stability
-        stableFPS = 0.5f * fps + 0.5f * stableFPS;
+        stableFPS = 0.8f * fps + 0.2f * stableFPS;
     }
 }
 
