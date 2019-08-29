@@ -14,44 +14,32 @@
 // samples: |--*--|
 #extension GL_OES_EGL_image_external : require
 
-//mat4 weights0 = mat4(
-//        -0.6283, 2.1687,-0.6527,-0.8721,  // column 1
-//        -0.6121, 3.9540,-2.5657,-2.5035,  // column 2
-//        -0.5640,-4.6584, 4.7184, 4.5599,  // column 3
-//        -0.0000,-0.5383, 1.3320, 1.2500); // last column (biases)
-//vec4 weights1 = vec4( 1.1078,33.6169,-8.0648,-8.7316);
-//float b0 = -2.9163;
+mat4 weights0 = mat4(
+        -0.1321,-0.8595,-0.0282,-0.7798,  // column 1
+        -0.5167, 0.0255,-0.7265,-0.1511,  // column 2
+         0.6869, 0.8819, 0.4367, 0.8940,  // column 3
+         17.0327,-1.0215, 1.5175, 5.4740); // last column (biases)
+vec4 weights1 = vec4(42.3189, 4.8411, 1.5692,24.5940);
+float b0 = -9.3939;
+
+vec4 ReLu(vec4 x) {
+    return max(vec4(0.0), x);
+}
+
+float sigmoid(float x) {
+    return 1.0 / (1.0 + exp(-1.0 * x));
+}
 
 float getFilter(vec4 col) {
-    // We use a piecewise definition for Hue.
-    // We only compute one of the three parts.
-    // The `red piece' lies in [-1,1]. The green in [1,3]. The blue in [3,5].
-    // Multiply by 60 to get degrees.
-    float value = max(col.r, max(col.g, col.b));
-    float chroma= value - min(col.r, min(col.g, col.b));
-    float sat = (value > 0.0 ? (chroma / value) : 0.0); 
-    float ballfilter = 0.0; // 0.8;
-    if (col.r == value) {
-        if (sat > 0.35 && value > 0.15 && value < 0.95 ) {
-            float hue = (col.g - col.b) / chroma;
-            // Hue upper bound of 1.0 is automatic.
-            if (hue > 0.70) {
-                ballfilter = 1.0;
-            }
-            //else if (hue < 0.30) {
-            //    ballfilter = 0.0;
-            //}
-        }
-    }
-    return ballfilter;
     // two-layer neural network
-    //col[3] = 1.0; // bias (alpha) component
-    //// max is ReLu
-    //float neuron = b0 + dot(weights1, max(vec4(0.0), weights0 * col));
-    //if (neuron > 0.0)
-    //    return 1.0;
-    //else
-    //    return 0.0;
+    col[3] = 1.0; // bias (alpha) component
+    float neuron = b0 + dot(weights1, ReLu(weights0 * col));
+    // return sigmoid(neuron);
+    // The neural network was trained with a sigmoid, but this should be faster and good enough
+    if (neuron < 0.0)
+        return 1.0;
+    else
+        return 0.0;
 }
 
 uniform samplerExternalOES tex;

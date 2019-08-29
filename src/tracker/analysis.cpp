@@ -310,8 +310,13 @@ int analysis_process_ball_buffer(uint8_t* pixelbuffer, int width, int height) {
     float x = 0.5f + (((float)avgx) / ((float)weight));
     float y = 0.5f + (((float)avgy) / ((float)weight));
 
-    int threshold1 = 30;  // The max pixel should be at least this
-    int threshold2 = 150; // The total in the neighborhood should be at least this
+    // Total should be 126 pixels
+    // But it was first averaged over 8x8 = 64 pixels
+    // And that is rescaled to the 256 range
+    // So (126/64) * 255 ~= 500
+
+    int threshold1 = 100; // The max pixel should be at least this
+    int threshold2 = 500; // The total in the neighborhood should be at least this
     bool ballFound = maxValue > threshold1 && weight > threshold2;
 
     // Map to [-1,1] range
