@@ -7,6 +7,7 @@ MIT License
 #include "analysis.h"
 #include <cstring>
 #include <cstdio>
+#include <sys/time.h>
 #define VCOS_LOG_CATEGORY (&balltrack_log_category)
 #include "interface/vcos/vcos.h" // For threads and semaphores
 #include "interface/vcsm/user-vcsm.h" // For creating the videocore-shared-memory texture
@@ -563,10 +564,14 @@ void swap(T& a, T& b) {
     b = tmp;
 }
 
+void update_render_fps();
+
 int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint srctype)
 {
     if (!allInitialized)
         return -1;
+
+    update_render_fps();
 
     static int frameNumber = -5;
     ++frameNumber;
@@ -659,5 +664,37 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
     analysis_draw();
 
     return 0;
+}
+
+float stableFPS = 40; // Used in analysis.cpp
+
+void update_render_fps() {
+    static int frame_count = 0;
+    static long long time_start = 0;
+
+    if (time_start == 0) {
+        struct timeval te;
+        gettimeofday(&te, NULL);
+        long long time_now = te.tv_sec * 1000LL + te.tv_usec / 1000;
+        time_start = time_now;
+        return;
+    }
+
+    frame_count++;
+
+    if (frame_count < 100)
+        return;
+
+    struct timeval te;
+    gettimeofday(&te, NULL);
+    long long time_now = te.tv_sec * 1000LL + te.tv_usec / 1000;
+
+    if (time_now - time_start > 5000) {
+        float fps = (float)frame_count / ((time_now - time_start) / 1000.0);
+        frame_count = 0;
+        time_start = time_now;
+        // Take moving average for more stability
+        stableFPS = 0.5f * fps + 0.5f * stableFPS;
+    }
 }
 

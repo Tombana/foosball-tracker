@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <vector>
 #include <fstream>
 
@@ -33,6 +34,16 @@ FIELD field;
 int frameNumber;
 
 
+// Ball speeds
+constexpr float fieldWidth = 1.5f; // in meters
+constexpr float fieldHeight = 1.0f; // in meters
+extern float stableFPS; // Computed in core.cpp
+constexpr int BallSpeedCount = 5 * 60; // 5 seconds at 60 fps
+float ballSpeeds[BallSpeedCount];
+int ballSpeedIndex = 0;
+int ballSpeedFramesSinceLastUpdate = 0; // To prevent flooding the server
+
+
 int analysis_send_to_server(const char* str) {
     int fd = open("/tmp/foosballtrackerpipe.in", O_WRONLY | O_NONBLOCK);
     if (fd > 0) {
@@ -41,6 +52,13 @@ int analysis_send_to_server(const char* str) {
         return 1;
     }
     return 0;
+}
+
+void sendMaxSpeed(float speed) {
+    char buffer[64];
+    sprintf(buffer, "MAXSPEED %4.1f\n", speed);
+    analysis_send_to_server(buffer);
+    ballSpeedFramesSinceLastUpdate = 0;
 }
 
 std::ofstream timeseriesfile;
@@ -71,10 +89,15 @@ int isInGoal(POINT ball) {
     return 0;
 }
 
-float distSq(POINT a, POINT b) {
+// Input in field coordinates
+// Output in meters
+float dist(POINT a, POINT b) {
     float dx = a.x - b.x;
     float dy = a.y - b.y;
-    return dx * dx + dy * dy;
+    // dx,dy are in [-1,1] range
+    dx *= 0.5f * fieldWidth;
+    dy *= 0.5f * fieldHeight;
+    return std::sqrt(dx * dx + dy * dy);
 }
 
 // 
@@ -162,10 +185,31 @@ int analysis_update(POINT ball, bool ballFound) {
         POINT prevBall = balls[prevIdx];
         int frameDiffs = frameNumber - ballFrames[prevIdx];
         if (frameDiffs <= 20) {
-            // Distance should be large ??
-            // At least x % of field width ( = 2.0f ) per frame
-            float distThreshold = ((float)frameDiffs) * 0.10f * 2.0f;
-            if (distSq(prevBall, ball) > distThreshold * distThreshold ) {
+            float ballDist = dist(prevBall, ball);
+            float ballSpeed = ballDist * stableFPS / float(frameDiffs);
+            // ballDist is in meters
+            ballSpeed *= 3.6f;
+            // ballSpeed is in km/h
+
+            // See if it beats the maximum over the last few seconds
+            bool newMax = true;
+            for (int i = 0; i < BallSpeedCount; ++i) {
+                if (ballSpeed <= ballSpeeds[i]) {
+                    newMax = false;
+                    break;
+                }
+            }
+
+            ballSpeeds[ballSpeedIndex] = ballSpeed;
+            ++ballSpeedIndex;
+            if (ballSpeedIndex == BallSpeedCount)
+                ballSpeedIndex = 0;
+
+            if (newMax && ballSpeedFramesSinceLastUpdate > 20) {
+                sendMaxSpeed(ballSpeed);
+            }
+
+            if (ballSpeed > 50.0f ) {
                 if (ball.y > -goalHeight && ball.y < goalHeight && 
                         (ball.x < -1.0f + 3.0f * goalWidth || ball.x > 1.0f - 3.0f * goalWidth) ) {
                     sendSAVE = 1;
@@ -184,7 +228,13 @@ int analysis_update(POINT ball, bool ballFound) {
                 }
             }
         }
+
     } else {
+        ballSpeeds[ballSpeedIndex] = 0.0f;
+        ++ballSpeedIndex;
+        if (ballSpeedIndex == BallSpeedCount)
+            ballSpeedIndex = 0;
+
         if (ballMissing++ == 15) {
             int goal = isInGoal(balls[prevIdx]);
             if (goal) {
@@ -209,6 +259,17 @@ int analysis_update(POINT ball, bool ballFound) {
             }
         }	
     }
+
+    if (ballSpeedFramesSinceLastUpdate > int(stableFPS)) {
+        float max = 0.0f;
+        for (int i = 0; i < BallSpeedCount; ++i) {
+            if (ballSpeeds[i] > max) {
+                max = ballSpeeds[i];
+            }
+        }
+        sendMaxSpeed(max);
+    }
+
     return 1;
 }
 
