@@ -15,10 +15,10 @@
 #extension GL_OES_EGL_image_external : require
 
 mat4 weights0 = mat4(
-        -0.1356,-0.8715,-0.0282,-0.7798,  // column 1
-        -0.5234, 0.0323,-0.7265,-0.1511,  // column 2
-         0.7126, 0.8796, 0.4367, 0.8940,  // column 3
-         16.9938,-0.9921, 1.5175, 5.4740); // last column (biases)
+ -34.5803,-222.2452,  -7.2026,-198.8427,  // column 1
+-133.4599,   8.2426,-185.2599, -38.5274,  // column 2
+ 181.7046, 224.2931, 111.3470, 227.9662,  // column 3
+  16.9938,  -0.9921,   1.5175,   5.4740); // last column (biases)
 vec4 weights1 = vec4(42.2840, 4.9263, 1.5692,24.5940);
 float b1 = -9.4811;
 
@@ -32,7 +32,7 @@ float sigmoid(float x) {
 
 float getFilter(vec4 col) {
     // two-layer neural network
-    col[3] = 1.0; // bias (alpha) component
+    // Assumes col[3] is equal to 1.0 for the bias to work
     float neuron = b1 + dot(weights1, ReLu(weights0 * col));
     // return sigmoid(neuron);
     // The neural network was trained with a sigmoid, but this should be faster and good enough
