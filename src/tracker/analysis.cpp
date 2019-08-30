@@ -15,9 +15,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-// Constants
-float goalWidth = 0.15f;
-float goalHeight = 0.35f;
+// Size of the goal in field-coordinates,
+// i.e., 1.0f is the full field width/height
+float goalWidth = 0.10f;
+float goalHeight = 0.38f;
 
 
 // Ball history
@@ -84,7 +85,7 @@ int analysis_init() {
 // Returns 1 when in left goal
 // Returns 2 when in right goal
 int isInGoal(POINT ball) {
-    if (ball.y > -goalHeight && ball.y < goalHeight) {
+    if (ball.y > 0.5f - 0.5f * goalHeight && ball.y < 0.5f + 0.5f * goalHeight) {
         if (ball.x < 0.0f + goalWidth) {
             return 1;
         } else if (ball.x > 1.0f - goalWidth) {
@@ -161,14 +162,20 @@ int analysis_update(POINT ball, bool ballFound) {
     ++frameNumber;
 
     static int sendSAVE = 0;
+    static int sendFAST = 0;
     static int lastGOAL = 0;
 
+    // Only send the signals if they do not get interrupted by a goal within 0.5 seconds
     if (sendSAVE) {
-        // Only send the SAVE if it does not get interrupted by a goal
-        // within 20 frames
-        if (sendSAVE++ == 20) {
+        if (sendSAVE++ > int(0.5f * stableFPS)) {
             analysis_send_to_server("SAVE\n");
             sendSAVE = 0;
+        }
+    }
+    if (sendFAST) {
+        if (sendFAST++ > int(0.5f * stableFPS)) {
+            analysis_send_to_server("FAST\n");
+            sendFAST = 0;
         }
     }
 
@@ -194,27 +201,19 @@ int analysis_update(POINT ball, bool ballFound) {
             ballSpeed *= 3.6f;
             // ballSpeed is in km/h
 
-            // See if it beats the maximum over the last few seconds
-            bool newMax = true;
-            for (int i = 0; i < BallSpeedCount; ++i) {
-                if (ballSpeed <= ballSpeeds[i]) {
-                    newMax = false;
-                    break;
-                }
-            }
-
             ballSpeeds[ballSpeedIndex] = ballSpeed;
             ++ballSpeedIndex;
             if (ballSpeedIndex == BallSpeedCount)
                 ballSpeedIndex = 0;
 
-            if (ballSpeed > 30.0f ) { // 30 km/h
-                if (ball.y > -goalHeight && ball.y < goalHeight && 
-                        (ball.x < -1.0f + 3.0f * goalWidth || ball.x > 1.0f - 3.0f * goalWidth) ) {
-                    sendSAVE = 1;
-                } else {
-                    //sendFAST = 1;
-                }
+            if (ballSpeed > 15.0f &&
+                (ball.y > 0.5f - 0.5f * goalHeight &&
+                 ball.y < 0.5f + 0.5f * goalHeight) &&
+                (ball.x < 0.0f + 3.0f * goalWidth ||
+                 ball.x > 1.0f - 3.0f * goalWidth)) {
+                sendSAVE = 1;
+            } else if (ballSpeed > 30.0f) { // km/h
+                sendFAST = 1;
             }
         }
 
@@ -238,25 +237,22 @@ int analysis_update(POINT ball, bool ballFound) {
             int goal = isInGoal(balls[prevIdx]);
             if (goal) {
                 sendSAVE = 0; // Dont send a potential SAVE
-                if (frameNumber - lastGOAL >= 60) { // Check if the last goal was at least 60 frames ago
+                sendFAST = 0;
+                if (frameNumber - lastGOAL >= int(1.5f * stableFPS)) { // Check if the last goal was at least 1.5 seconds ago
                     lastGOAL = frameNumber;
-                    if (goal == 1) {
-                        printf("Goal for red!\n");
-                        analysis_send_to_server("RG\n");
-                    } else if (goal == 2) {
-                        printf("Goal for blue!\n");
-                        analysis_send_to_server("BG\n");
-                    }
                     int player = getPlayerWhoScored(goal);
-                    if (player) {
-                        printf("TEST: Scored by \"bar\" %d\n", player);
-                        char buffer[128];
-                        sprintf(buffer, "SCOREDBY %d\n", player);
-                        analysis_send_to_server(buffer);
+                    char buffer[64];
+                    if (goal == 1) {
+                        printf("Goal for red scored by \"bar\" %d\n", player);
+                        sprintf(buffer, "RG %d\n", player);
+                    } else if (goal == 2) {
+                        printf("Goal for blue scored by \"bar\" %d\n", player);
+                        sprintf(buffer, "BG %d\n", player);
                     }
+                    analysis_send_to_server(buffer);
                 }
             }
-        }	
+        }
     }
 
     if (frameNumber > 100 && ballSpeedFramesSinceLastUpdate > int(0.5f * stableFPS)) {
@@ -286,16 +282,7 @@ void draw_line_strip(POINT* xys, int count, uint32_t color);
 // The `field` and `ballsScreen` are not yet properly protected
 // from threading issues
 int analysis_draw() {
-    // Draw green bounding box
-    draw_square(field.xmin, field.xmax, field.ymin, field.ymax, 0xff00ff00);
-    float yAvg = 0.5f * (field.ymin + field.ymax);
-
-    // Draw `goals`
-    draw_square(field.xmin, field.xmin + goalWidth, yAvg - goalHeight, yAvg + goalHeight, 0xff00ff00);
-    draw_square(field.xmax - goalWidth, field.xmax, yAvg - goalHeight, yAvg + goalHeight, 0xff00ff00);
-
     // Draw `player bar regions`
-
     // (#bar - 1)/8 <= (x+1)/2 < #bar / 8
     for (int bar = 1; bar < 8; ++bar) {
         // These are still `field coordinates`
@@ -304,8 +291,22 @@ int analysis_draw() {
         // Go to real coordinates
         barMin = (field.xmax - field.xmin) * 0.5f * (1.0f + barMin) + field.xmin;
         barMax = (field.xmax - field.xmin) * 0.5f * (1.0f + barMax) + field.xmin;
-        draw_square( barMin, barMax, field.ymin, field.ymax, 0xff00d000);
+        draw_square( barMin, barMax, field.ymin, field.ymax, 0xff00c000);
     }
+
+    // Draw green bounding box, after drawing player regions because this
+    // has to be on top
+    draw_square(field.xmin, field.xmax, field.ymin, field.ymax, 0xff00ff00);
+
+    // Compute goal in screen coordinates
+    float yAvg = 0.5f * (field.ymin + field.ymax);
+    float goalTop = yAvg + 0.5f * goalHeight * (field.ymax - field.ymin);
+    float goalBot = yAvg - 0.5f * goalHeight * (field.ymax - field.ymin);
+    float goalW = goalWidth * (field.xmax - field.xmin);
+
+    // Draw `goals`
+    draw_square(field.xmin, field.xmin + goalW, goalBot, goalTop, 0xff00ff00);
+    draw_square(field.xmax - goalW, field.xmax, goalBot, goalTop, 0xff00ff00);
 
     // Draw line for ball history
     // Be carefull with circular buffer
@@ -313,12 +314,12 @@ int analysis_draw() {
     draw_line_strip(&ballsScreen[ballCur], historyCount - ballCur, 0xffff0000);
 
     // Draw squares on detection points
-    for (int i = ballCur - 20; i < ballCur; ++i) {
+    for (int i = ballCur - 10; i < ballCur; ++i) {
         int time = ballCur - i;
-        int blue = 0xff - time;
+        int blue = 0xff - 3 * time;
         // The bytes are R,G,B,A but little-endian so 0xAABBGGRR
         int color = 0xff000000 | (blue << 16);
-        float size = 0.002f * time;
+        float size = 0.003f * time;
 
         int idx = (i < 0 ? i + historyCount : i);
         POINT* pt = &ballsScreen[idx];
