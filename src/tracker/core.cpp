@@ -332,6 +332,7 @@ int balltrack_core_init(int externalSamplerExtension, int flipY)
 
     GLCHK(glDisable(GL_BLEND));
     GLCHK(glDisable(GL_DEPTH_TEST));
+    GLCHK(glLineWidth(4.0f));
 
     // Create a binary and N-ary semaphore and start an analysis thread
     // Also allocate N pixelbuffers
