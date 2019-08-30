@@ -22,7 +22,7 @@ float goalHeight = 0.38f;
 
 
 // Ball history
-const int historyCount = 64;
+const int historyCount = 256;
 POINT balls[historyCount]; // in [0,1]x[0,1] field coordinates
 int ballFrames[historyCount];
 POINT ballsScreen[historyCount]; // in [-1,1]x[-1,1] screen coordinates
@@ -124,7 +124,7 @@ int getPlayerBar(POINT ball) {
     return (int)(1.0f + 8.0f * ball.x);
 }
 
-int playerBarFrameThreshold = 4;
+int playerBarFrameThreshold = 6;
 
 int barTeams[9] = {0, 1, 1, 2, 1, 2, 1, 2, 2};
 
@@ -134,7 +134,12 @@ int getPlayerWhoScored(int team) {
     int curIdx = ballCur;
     int player = 0;
     int hits = 0;
-    for(int i = 0; i < 20; ++i) {
+
+    // Look back 2.5 seconds
+    int maxI = int(2.5f * stableFPS);
+    if (maxI > historyCount)
+        maxI = historyCount;
+    for(int i = 0; i < maxI; ++i) {
         // Go to previous index
         if (curIdx == 0)
             curIdx = historyCount - 1;
@@ -310,8 +315,12 @@ int analysis_draw() {
 
     // Draw line for ball history
     // Be carefull with circular buffer
-    draw_line_strip(&ballsScreen[0], ballCur, 0xffff0000);
-    draw_line_strip(&ballsScreen[ballCur], historyCount - ballCur, 0xffff0000);
+    if (ballCur - 60 >= 0) {
+        draw_line_strip(&ballsScreen[ballCur-60], 60, 0xffff0000);
+    } else {
+        draw_line_strip(&ballsScreen[historyCount + ballCur - 60], 60 - ballCur, 0xffff0000);
+        draw_line_strip(&ballsScreen[0], ballCur, 0xffff0000);
+    }
 
     // Draw squares on detection points
     for (int i = ballCur - 10; i < ballCur; ++i) {
@@ -513,8 +522,8 @@ int analysis_process_field_buffer(uint8_t* pixelbuffer, int width, int height) {
     }
 #endif
 
-    fieldxmin -= 3;
-    fieldxmax += 3;
+    fieldxmin -= 1;
+    fieldxmax += 1;
     fieldymin -= 1;
     fieldymax += 1;
 
