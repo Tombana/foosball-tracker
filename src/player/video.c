@@ -35,6 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "bcm_host.h"
 #include "libilclient/ilclient.h"
+#include "interface/vcos/vcos.h" // For threads and semaphores
 
 static OMX_BUFFERHEADERTYPE* eglBuffer = NULL;
 static COMPONENT_T* egl_render = NULL;
@@ -42,7 +43,10 @@ static COMPONENT_T* egl_render = NULL;
 static void* eglImage = 0;
 
 char* filename = "/opt/vc/src/hello_pi/hello_video/test.h264";
-int fps = 5;
+int fps = 10;
+
+extern VCOS_SEMAPHORE_T semNewFrame;
+extern VCOS_SEMAPHORE_T semFinishedFrame;
 
 static void update_fps()
 {
@@ -74,9 +78,10 @@ static void update_fps()
 void my_fill_buffer_done(void* data, COMPONENT_T* comp) {
     update_fps();
 
-    // TODO: Tell the rendering thread that it should render
-    // and then wait for the rendering thread to finish
-    // Probably just use two semaphores for this.
+    // Notify GL thread that there is a frame
+    vcos_semaphore_post(&semNewFrame);
+    // Wait for the GL thread to finish
+    vcos_semaphore_wait(&semFinishedFrame);
 
     // Tell the video decoder that this buffer is handled
     // and can be filled with the next video frame

@@ -36,6 +36,8 @@ We can do this in parallel
 
 and swap a/b every frame, so that none of the three operations depends on another operation in that frame.
 I call this method *parallel textures*.
+Note: after every frame, we call `eglSwapBuffers`, but this does apparently *not* finish all OpenGL operations,
+because it can happen that even *two* frames after we request a render to a texture, it is still empty!
 
 ## VideoCore Shared Memory
 

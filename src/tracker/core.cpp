@@ -603,11 +603,21 @@ int balltrack_core_process_image(int width, int height, GLuint srctex, GLuint sr
 
     // Every X steps, we update the size of the green field bounding box
     static int fieldUpdateSteps = FieldUpdateDelay; // Countdown
-    if (fieldUpdateSteps == 2) {
+    if (fieldUpdateSteps == 5) {
         render_pass(&shader_colorfilter_field, &input, texColorFilterField);
-    } else if(fieldUpdateSteps == 1) {
+    } else if(fieldUpdateSteps == 4) {
         render_pass(&shader_downsample, texColorFilterField, texDownscaledField);
     } else if(fieldUpdateSteps == 0) {
+        // There is an extra gap of a few frames there because
+        // apparently it can happen that the previous render operation
+        // is not completed, *even two frames later* !!
+        // I think this problem does not happen for the ball buffers because
+        // Frame 1:  in -> a1
+        //           a2 -> b1       <---
+        //           b2 -> readout
+        // Frame 2:  in -> a2       <--- This call writes to a2, meaning the (a2->b1) must be finished
+        //           a1 -> b2
+        //           b1 -> readout  <--- So this one should be fine
         send_buffer_to_analysis(BUFFERTYPE_FIELD, texDownscaledField);
         fieldUpdateSteps = FieldUpdateDelay;
     }

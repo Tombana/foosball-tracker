@@ -37,6 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/time.h>
 
 #include "bcm_host.h"
+#include "interface/vcos/vcos.h" // For threads and semaphores
 
 #include "GLES/gl.h"
 #include "EGL/egl.h"
@@ -80,7 +81,8 @@ static STATE_T _state, *state=&_state;
 
 static void* eglImage = 0;
 static pthread_t thread1;
-
+VCOS_SEMAPHORE_T semNewFrame;
+VCOS_SEMAPHORE_T semFinishedFrame;
 
 /***********************************************************
  * Name: init_ogl
@@ -234,9 +236,16 @@ static void redraw_scene(STATE_T *state)
    glRotatef(90.f, 0.f, 1.f, 0.f ); // bottom face normal along y axis
    glDrawArrays( GL_TRIANGLE_STRIP, 20, 4);
 #endif
+
+   // Wait for a frame from the video decoder
+   vcos_semaphore_wait(&semNewFrame);
+
    balltrack_core_process_image(state->screen_width, state->screen_height, state->tex, GL_TEXTURE_2D);
 
    eglSwapBuffers(state->display, state->surface);
+
+   // Tell the video decoder we are ready for the next frame
+   vcos_semaphore_post(&semFinishedFrame);
 }
 
 /***********************************************************
@@ -280,19 +289,20 @@ static void init_textures(STATE_T *state)
       exit(1);
    }
 
-   // Start rendering
+    VCOS_STATUS_T status;
+    status = vcos_semaphore_create(&semNewFrame, "semNewFrame", 0);
+    if (status != VCOS_SUCCESS) {
+        printf("Failed to create render semaphore %d\n", status);
+        exit(1);
+    }
+    status = vcos_semaphore_create(&semFinishedFrame, "semFinishedFrame", 1);
+    if (status != VCOS_SUCCESS) {
+        printf("Failed to create render semaphore %d\n", status);
+        exit(1);
+    }
+
+   // Start decoding video frames
    pthread_create(&thread1, NULL, video_decode_test, eglImage);
-
-#if 0
-   // setup overall texture environment
-   glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
-   glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-
-   glEnable(GL_TEXTURE_2D);
-
-   // Bind texture surface to current vertices
-   glBindTexture(GL_TEXTURE_2D, state->tex);
-#endif
 }
 //------------------------------------------------------------------------------
 
@@ -317,7 +327,10 @@ static void exit_func(void)
    eglDestroyContext( state->display, state->context );
    eglTerminate( state->display );
 
-   printf("\ncube closed\n");
+    vcos_semaphore_delete(&semNewFrame);
+    vcos_semaphore_delete(&semFinishedFrame);
+
+   printf("\nVideoplayer closed\n");
 } // exit_func()
 
 //==============================================================================
