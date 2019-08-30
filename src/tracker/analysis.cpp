@@ -22,9 +22,9 @@ float goalHeight = 0.35f;
 
 // Ball history
 const int historyCount = 64;
-POINT balls[historyCount]; // in field coordinates
+POINT balls[historyCount]; // in [0,1]x[0,1] field coordinates
 int ballFrames[historyCount];
-POINT ballsScreen[historyCount]; // in screen coordinates
+POINT ballsScreen[historyCount]; // in [-1,1]x[-1,1] screen coordinates
 int ballCur = 0;
 
 int ballMissing = 1000;
@@ -33,10 +33,15 @@ int ballMissing = 1000;
 FIELD field;
 int frameNumber = 0;
 
+// Size of the green field:
+// 120.5 cm x 61.4 cm
+// Size of the field including the white bars:
+// 120.5 cm x 70.2 cm
+// Height factor for including the white bars: 1.1433
 
-// Ball speeds
-constexpr float fieldWidth = 1.5f; // in meters
-constexpr float fieldHeight = 1.0f; // in meters
+// For ball speeds
+constexpr float fieldWidth  = 1.205f; // in meters
+constexpr float fieldHeight = 0.702f; // in meters
 extern float stableFPS; // Computed in core.cpp
 constexpr int BallSpeedCount = 5 * 60; // 5 seconds at 60 fps
 float ballSpeeds[BallSpeedCount];
@@ -80,7 +85,7 @@ int analysis_init() {
 // Returns 2 when in right goal
 int isInGoal(POINT ball) {
     if (ball.y > -goalHeight && ball.y < goalHeight) {
-        if (ball.x < -1.0f + goalWidth) {
+        if (ball.x < 0.0f + goalWidth) {
             return 1;
         } else if (ball.x > 1.0f - goalWidth) {
             return 2;
@@ -94,9 +99,9 @@ int isInGoal(POINT ball) {
 float dist(POINT a, POINT b) {
     float dx = a.x - b.x;
     float dy = a.y - b.y;
-    // dx,dy are in [-1,1] range
-    dx *= 0.5f * fieldWidth;
-    dy *= 0.5f * fieldHeight;
+    // x,y are in [0,1] range
+    dx *= fieldWidth;
+    dy *= fieldHeight;
     return std::sqrt(dx * dx + dy * dy);
 }
 
@@ -112,10 +117,10 @@ float dist(POINT a, POINT b) {
 // 8 -- red keeper
 //
 int getPlayerBar(POINT ball) {
-    if (ball.x < -1.0f || ball.x >= 1.0f)
+    if (ball.x < 0.0f || ball.x >= 1.0f)
         return 0;
 
-    return (int)(1.0f + 8.0f * (0.5f * (ball.x + 1.0f)));
+    return (int)(1.0f + 8.0f * ball.x);
 }
 
 int playerBarFrameThreshold = 4;
@@ -176,8 +181,6 @@ int analysis_update(POINT ball, bool ballFound) {
 
         balls[ballCur] = ball;
         ballFrames[ballCur] = frameNumber;
-        ballsScreen[ballCur].x = (field.xmax - field.xmin) * 0.5f * (1.0f + ball.x) + field.xmin;
-        ballsScreen[ballCur].y = (field.ymax - field.ymin) * 0.5f * (1.0f + ball.y) + field.ymin;
         ++ballCur;
 
         // Check for fast shot to goal
@@ -205,7 +208,7 @@ int analysis_update(POINT ball, bool ballFound) {
             if (ballSpeedIndex == BallSpeedCount)
                 ballSpeedIndex = 0;
 
-            if (ballSpeed > 50.0f ) {
+            if (ballSpeed > 30.0f ) { // 30 km/h
                 if (ball.y > -goalHeight && ball.y < goalHeight && 
                         (ball.x < -1.0f + 3.0f * goalWidth || ball.x > 1.0f - 3.0f * goalWidth) ) {
                     sendSAVE = 1;
@@ -372,22 +375,25 @@ int analysis_process_ball_buffer(uint8_t* pixelbuffer, int width, int height) {
     float x = 0.5f + (((float)avgx) / ((float)weight));
     float y = 0.5f + (((float)avgy) / ((float)weight));
 
-    // Total should be at least 70  pixels
+    // Total should be at least T pixels (where T is taken from neural network)
     // But it was first averaged over 8x8 = 64 pixels
     // And that is rescaled to the 256 range
-    // So (70/64) * 255 ~= 270
+    // So (T/64) * 255 ~= threshold2
 
     int threshold1 = 100; // The max pixel should be at least this
     int threshold2 = 270; // The total in the neighborhood should be at least this
     bool ballFound = maxValue > threshold1 && weight > threshold2;
 
-    // Map to [-1,1] range
     POINT ball;
+    // First map to [-1,1] screen coordinate range and save it
     ball.x = (2.0f * x) / ((float)width) - 1.0f;
     ball.y = (2.0f * y) / ((float)height) - 1.0f;
-    // Map to field coordinates
-    ball.x = -1.0f + 2.0f * (ball.x - field.xmin) / (field.xmax - field.xmin);
-    ball.y = -1.0f + 2.0f * (ball.y - field.ymin) / (field.ymax - field.ymin);
+    if (ballFound)
+        ballsScreen[ballCur] = ball;
+
+    // Then map to [0,1]x[0,1] field coordinates
+    ball.x = (ball.x - field.xmin) / (field.xmax - field.xmin);
+    ball.y = (ball.y - field.ymin) / (field.ymax - field.ymin);
 
     analysis_update(ball, ballFound);
     return 0;
@@ -508,12 +514,8 @@ int analysis_process_field_buffer(uint8_t* pixelbuffer, int width, int height) {
 
     fieldxmin -= 3;
     fieldxmax += 3;
-    fieldymin -= 3;
-    fieldymax += 3;
-    if (fieldxmin < 0) fieldxmin = 0;
-    if (fieldymin < 0) fieldymin = 0;
-    if (fieldxmax >= width) fieldxmax = width - 1;
-    if (fieldymax >= height) fieldymax = height - 1;
+    fieldymin -= 1;
+    fieldymax += 1;
 
     // The above values are at lower-left pixel corners
     // Take the max values at top-right pixel corners:
@@ -526,6 +528,31 @@ int analysis_process_field_buffer(uint8_t* pixelbuffer, int width, int height) {
     newField.xmax = (2.0f * fieldxmax) / ((float)width) - 1.0f;
     newField.ymin = (2.0f * fieldymin) / ((float)height) - 1.0f;
     newField.ymax = (2.0f * fieldymax) / ((float)height) - 1.0f;
+
+    // Include the white bars at the top and bottom
+    // Physical measurement says the height factor is about 1.143
+    // a -> (1/2) ( (1-factor)*b + (1+factor) * a )
+    // b -> (1/2) ( (1+factor)*b + (1-factor) * a )
+    float fplus = 0.5f *  2.143f;
+    float fmin  = 0.5f * -0.143f;
+    float a,b;
+    a = fmin * newField.ymax + fplus * newField.ymin;
+    b = fplus * newField.ymax + fmin * newField.ymin;
+    newField.ymin = a;
+    newField.ymax = b;
+    a = fmin * newField.xmax + fplus * newField.xmin;
+    b = fplus * newField.xmax + fmin * newField.xmin;
+    newField.xmin = a;
+    newField.xmax = b;
+
+    if (newField.xmin < -1.0f)
+        newField.xmin = -1.0f;
+    if (newField.ymin < -1.0f)
+        newField.ymin = -1.0f;
+    if (newField.xmax > 1.0f)
+        newField.xmax = 1.0f;
+    if (newField.ymax > 1.0f)
+        newField.ymax = 1.0f;
 
     // Time average for field, because it fluctuates too much
     field.xmin = 0.80f * field.xmin + 0.20 * newField.xmin;
