@@ -1,2 +1,3 @@
 build/
 src/tracker/balltrackshaders/allshaders.h
+neuralnet/.ipynb_checkpoints
